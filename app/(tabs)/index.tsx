@@ -29,9 +29,9 @@ export default function TelaInicial() {
 
 const styles = StyleSheet.create({
   main: {
-    flex: 1, // Ocupa a tela inteira
-    justifyContent: "center", // Centraliza verticalmente
-    alignItems: "center", // Centraliza horizontalmente
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
     backgroundColor: "#F4F8F7",
     gap: 8,
   },
@@ -53,13 +53,11 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#0E766D",
   },
-
   button: {
     width: 64,
     height: 64,
     backgroundColor: "#0E766D",
     borderRadius: 32,
-
     alignItems: "center",
     justifyContent: "center",
     marginTop: 100,
@@ -69,16 +67,13 @@ const styles = StyleSheet.create({
     fontSize: 30,
     fontWeight: "bold",
   },
-
   fraseImpacto: {
     left: 0,
-    right: 0, // left:0 + right:0 garante largura total para centralizar o texto
-    textAlign: "center", // centraliza o texto horizontalmente
-
+    right: 0,
+    textAlign: "center",
     fontSize: 18,
-
     color: "#5A6D69",
-    paddingHorizontal: 30, // evita que o texto cole nas bordas em telas menores
-    lineHeight: 26, // respiro entre linhas caso quebre
+    paddingHorizontal: 30,
+    lineHeight: 26,
   },
 });
