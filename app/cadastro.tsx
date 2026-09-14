@@ -78,6 +78,8 @@ export default function App() {
     setForm(f => ({ ...f, [key]: value }));
 
   const emailOK = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(form.email);
+  const specialtyOK = /^[A-Za-zÀ-ÿ\s]{3,}$/.test(form.specialty); // NOVO
+  const crmOK = /^\d{4,7}$/.test(form.crm); // NOVO
   const passwordOK =
     form.password.length >= 6 &&
     /[A-Z]/.test(form.password) &&
@@ -99,6 +101,12 @@ export default function App() {
 
     if (!emailOK)
       return setError("Digite um e-mail com domínio válido.");
+
+    if (profile === "professional" && !specialtyOK) // NOVO
+      return setError("Digite uma especialidade válida (só letras, mínimo 3 caracteres)."); // NOVO
+
+    if (profile === "professional" && !crmOK) // NOVO
+      return setError("Digite um CRM válido (apenas números, 4 a 7 dígitos)."); // NOVO
 
     if (!validBirthDate(form.dob))
       return setError("Digite uma data de nascimento válida, a partir de 01/01/1900.");
