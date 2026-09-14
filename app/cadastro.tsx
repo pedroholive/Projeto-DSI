@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import {
-  ScrollView, View, Text, TextInput, TouchableOpacity, StyleSheet,
+  ScrollView, View, Text, TextInput, TouchableOpacity, StyleSheet, Image,
 } from "react-native";
-
 import { useRouter } from 'expo-router';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
@@ -87,52 +86,52 @@ export default function App() {
     /[^A-Za-z0-9]/.test(form.password);
 
   const submit = async () => {
-  setError("");
+    setError("");
 
-  const fields = profile === "patient"
-    ? [form.name, form.dob, form.email, form.phone, form.emergency,
-       form.password, form.confirm]
-    : [form.name, form.dob, form.email, form.phone, form.specialty,
-       form.crm, form.password, form.confirm];
+    const fields = profile === "patient"
+      ? [form.name, form.dob, form.email, form.phone, form.emergency,
+         form.password, form.confirm]
+      : [form.name, form.dob, form.email, form.phone, form.specialty,
+         form.crm, form.password, form.confirm];
 
-  if (fields.some(v => !v.trim()))
-    return setError("Preencha todos os campos.");
+    if (fields.some(v => !v.trim()))
+      return setError("Preencha todos os campos.");
 
-  if (!emailOK)
-    return setError("Digite um e-mail com domínio válido.");
+    if (!emailOK)
+      return setError("Digite um e-mail com domínio válido.");
 
-  if (!validBirthDate(form.dob))
-    return setError("Digite uma data de nascimento válida, a partir de 01/01/1900.");
+    if (!validBirthDate(form.dob))
+      return setError("Digite uma data de nascimento válida, a partir de 01/01/1900.");
 
-  if (!passwordOK)
-    return setError(
-      "A senha precisa ter 6+ caracteres, maiúscula, minúscula, número e caractere especial."
-    );
+    if (!passwordOK)
+      return setError(
+        "A senha precisa ter 6+ caracteres, maiúscula, minúscula, número e caractere especial."
+      );
 
-  if (form.password !== form.confirm)
-    return setError("As senhas precisam ser iguais.");
+    if (form.password !== form.confirm)
+      return setError("As senhas precisam ser iguais.");
 
-  if (!agreed)
-    return setError("Aceite os Termos de Uso e a Política de Privacidade.");
+    if (!agreed)
+      return setError("Aceite os Termos de Uso e a Política de Privacidade.");
 
-  if (profile === "patient") {
-    if (conditions.length === 0)
-      return setError("Selecione uma condição.");
+    if (profile === "patient") {
+      if (conditions.length === 0)
+        return setError("Selecione uma condição.");
 
-    if (conditions.includes("Diabetes") && !types["Diabetes"])
-      return setError("Selecione uma opção para a condição escolhida.");
+      if (conditions.includes("Diabetes") && !types["Diabetes"])
+        return setError("Selecione uma opção para a condição escolhida.");
 
-    if (conditions.includes("Hipertensão") && !types["Hipertensão"])
-      return setError("Selecione uma opção para a condição escolhida.");
-  }
+      if (conditions.includes("Hipertensão") && !types["Hipertensão"])
+        return setError("Selecione uma opção para a condição escolhida.");
+    }
 
-  try {
-    await createUserWithEmailAndPassword(auth, form.email, form.password);
-    setScreen("success");
-  } catch (err: any) {
-    setError("Não foi possível criar a conta. Verifique seus dados e tente de novo.");
-  }
-};
+    try {
+      await createUserWithEmailAndPassword(auth, form.email, form.password);
+      setScreen("success");
+    } catch (err: any) {
+      setError("Não foi possível criar a conta. Verifique seus dados e tente de novo.");
+    }
+  };
 
   const reset = () => {
     setProfile(null);
@@ -385,7 +384,13 @@ function Page({ children }: { children: React.ReactNode }) {
 function Header({ text }: { text: string }) {
   return (
     <View style={s.header}>
-      <View style={s.logo}><Text style={s.logoText}>+</Text></View>
+      <View style={s.logo}>
+        <Image
+          source={require('../assets/images/logo-healthsync.png')}
+          style={{ width: 36, height: 36 }}
+          resizeMode="contain"
+        />
+      </View>
       <Text style={s.title}>Health Sync</Text>
       <Text style={s.subtitle}>{text}</Text>
     </View>

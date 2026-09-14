@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, Alert, Image } from 'react-native';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { useRouter, Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons'; // Importando os ícones
 import { auth } from '../firebaseConfig';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -48,7 +49,11 @@ export default function LoginScreen() {
       {/* Bloco 1: Ícone e Textos de Apresentação */}
       <View style={styles.cabecalho}>
         <View style={styles.logoContainer}>
-          <Ionicons name="heart-outline" size={30} color="#FFFFFF" />
+          <Image
+            source={require('../assets/images/logo-healthsync.png')}
+            style={styles.logoImagem}
+            resizeMode="contain"
+          />
         </View>
         <Text style={styles.titulo}>Health Sync</Text>
         <Text style={styles.subtitulo}>
@@ -91,10 +96,10 @@ export default function LoginScreen() {
       </View>
 
       {/* Bloco 3: Esqueci minha senha */}
-      <View style={styles.containerEsqueciSenha}>
+      <Link href="/recuperar-senha" style={styles.containerEsqueciSenha}>
         <Text style={styles.esqueciSenha}>Esqueci minha senha</Text>
-      </View>
-
+      </Link>
+      
       {/* Bloco 4: Botões e Cadastro */}
       <Pressable style={styles.botao} onPress={handleLogin} disabled={carregando}>
         <Text style={styles.botaoTexto}>
@@ -114,7 +119,7 @@ export default function LoginScreen() {
       {/* Bloco 5: Rodapé */}
       <View style={styles.rodape}>
         <Text style={styles.textoRodape}>
-          Acompanhamento clínico integrado com seu médico{'\n'}assistente.
+          Sua rotina de saúde sincronizada em um só lugar.
         </Text>
       </View>
 
@@ -136,14 +141,18 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   logoContainer: {
-    backgroundColor: '#0E766D',
+    backgroundColor: '#DCEAE7', // fundo claro, não mais verde escuro
     width: 64,
     height: 64,
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
-  },
+},
+  logoImagem: {
+    width: 44,
+    height: 44,
+},
   titulo: { 
     fontSize: 28, 
     fontWeight: 'bold', 
