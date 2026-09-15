@@ -22,7 +22,7 @@ export default function LoginScreen() {
     setCarregando(true);
     try {
       await signInWithEmailAndPassword(auth, email, senha);
-      router.replace('/');
+      router.replace('/(tabs)')
     } catch (error: any) {
       Alert.alert('Erro ao entrar', traduzErro(error.code));
     } finally {
