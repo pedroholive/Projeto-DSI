@@ -73,11 +73,14 @@ export default function App() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [screen, setScreen] = useState<"choose" | "form" | "success">("choose");
   const [error, setError] = useState("");
+  const [carregando, setCarregando] = useState(false);
 
   const set = (key: keyof Form, value: string) =>
     setForm(f => ({ ...f, [key]: value }));
 
   const emailOK = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(form.email);
+  const specialtyOK = /^[A-Za-zÀ-ÿ\s]{3,}$/.test(form.specialty);
+  const crmOK = /^\d{4,7}$/.test(form.crm);
   const passwordOK =
     form.password.length >= 6 &&
     /[A-Z]/.test(form.password) &&
@@ -99,6 +102,12 @@ export default function App() {
 
     if (!emailOK)
       return setError("Digite um e-mail com domínio válido.");
+
+    if (profile === "professional" && !specialtyOK)
+      return setError("Digite uma especialidade válida (só letras, mínimo 3 caracteres).");
+
+    if (profile === "professional" && !crmOK)
+      return setError("Digite um CRM válido (apenas números, 4 a 7 dígitos).");
 
     if (!validBirthDate(form.dob))
       return setError("Digite uma data de nascimento válida, a partir de 01/01/1900.");
@@ -125,11 +134,32 @@ export default function App() {
         return setError("Selecione uma opção para a condição escolhida.");
     }
 
+    setCarregando(true);
     try {
       await createUserWithEmailAndPassword(auth, form.email, form.password);
       setScreen("success");
     } catch (err: any) {
-      setError("Não foi possível criar a conta. Verifique seus dados e tente de novo.");
+      switch (err.code) {
+        case 'auth/email-already-in-use':
+          setError('Já existe uma conta com esse e-mail.');
+          break;
+        case 'auth/invalid-email':
+          setError('E-mail inválido.');
+          break;
+        case 'auth/weak-password':
+          setError('Senha muito fraca. Escolha uma senha mais forte.');
+          break;
+        case 'auth/network-request-failed':
+          setError('Sem conexão com a internet. Verifique sua rede e tente novamente.');
+          break;
+        case 'auth/too-many-requests':
+          setError('Muitas tentativas seguidas. Aguarde um instante e tente novamente.');
+          break;
+        default:
+          setError('Não foi possível criar a conta. Tente novamente.');
+      }
+    } finally {
+      setCarregando(false);
     }
   };
 
@@ -364,7 +394,11 @@ export default function App() {
 
       {error !== "" && <Text style={s.error}>{error}</Text>}
 
-      <Button text="Criar conta" onPress={submit} />
+      <Button
+        text={carregando ? "Criando conta..." : "Criar conta"}
+        onPress={submit}
+        disabled={carregando}
+      />
 
       <Text style={s.footer}>
         Já tem conta? <Text style={s.link}>Entrar</Text>
