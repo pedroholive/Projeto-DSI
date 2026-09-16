@@ -1,11 +1,21 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, Alert, Image } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  StyleSheet,
+  Alert,
+  Image,
+} from 'react-native';
+
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import { useRouter, Link } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons'; // Importando os ícones
-import { auth } from '../firebaseConfig';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { auth, db } from '../firebaseConfig';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -21,8 +31,24 @@ export default function LoginScreen() {
     }
     setCarregando(true);
     try {
-      await signInWithEmailAndPassword(auth, email, senha);
-      router.replace('/(tabs)')
+     const credencial = await signInWithEmailAndPassword(
+  auth,
+  email.trim(),
+  senha
+);
+
+const perfilRef = doc(db, 'usuarios', credencial.user.uid);
+const perfilSnapshot = await getDoc(perfilRef);
+
+const perfil = perfilSnapshot.exists()
+  ? perfilSnapshot.data()
+  : null;
+
+if (perfil?.perfil === 'professional') {
+  router.replace('/medico-home');
+} else {
+  router.replace('/(tabs)');
+}
     } catch (error: any) {
       Alert.alert('Erro ao entrar', traduzErro(error.code));
     } finally {
