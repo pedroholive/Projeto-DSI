@@ -3,8 +3,19 @@ import {
   ScrollView, View, Text, TextInput, TouchableOpacity, StyleSheet, Image,
 } from "react-native";
 import { useRouter } from 'expo-router';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebaseConfig';
+import {
+  createUserWithEmailAndPassword,
+  deleteUser,
+  updateProfile,
+} from 'firebase/auth';
+
+import {
+  doc,
+  serverTimestamp,
+  setDoc,
+} from 'firebase/firestore';
+
+import { auth, db } from '../firebaseConfig';
 
 const C = {
   bg: "#dde8e6", white: "#fff", teal: "#3d8b85",
@@ -136,8 +147,58 @@ export default function App() {
 
     setCarregando(true);
     try {
-      await createUserWithEmailAndPassword(auth, form.email, form.password);
-      setScreen("success");
+      const credencial = await createUserWithEmailAndPassword(
+  auth,
+  form.email.trim(),
+  form.password
+);
+
+try {
+  await updateProfile(credencial.user, {
+    displayName: form.name.trim(),
+  });
+
+  await setDoc(doc(db, "usuarios", credencial.user.uid), {
+    nome: form.name.trim(),
+    email: form.email.trim().toLowerCase(),
+    dataNascimento: form.dob,
+    telefone: form.phone,
+    perfil: profile,
+
+    especialidade:
+      profile === "professional"
+        ? form.specialty.trim()
+        : null,
+
+    crm:
+      profile === "professional"
+        ? form.crm.trim()
+        : null,
+
+    telefoneEmergencia:
+      profile === "patient"
+        ? form.emergency
+        : null,
+
+    condicoes:
+      profile === "patient"
+        ? conditions
+        : [],
+
+    tiposCondicoes:
+      profile === "patient"
+        ? types
+        : {},
+
+    criadoEm: serverTimestamp(),
+  });
+} catch (profileError) {
+  // Evita deixar uma conta criada sem os dados do perfil.
+  await deleteUser(credencial.user).catch(() => undefined);
+  throw profileError;
+}
+
+setScreen("success");
     } catch (err: any) {
       switch (err.code) {
         case 'auth/email-already-in-use':
