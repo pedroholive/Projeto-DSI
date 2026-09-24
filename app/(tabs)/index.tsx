@@ -1,255 +1,220 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { doc, getDoc } from 'firebase/firestore';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { auth, db } from '../../firebaseConfig';
+
+const COLORS = {
+  background: '#F4F5F7',
+  card: '#FFFFFF',
+  text: '#20283A',
+  muted: '#6B7280',
+  teal: '#079A91',
+  tealDark: '#087B75',
+  tealSoft: '#E8FAF7',
+  tealBorder: '#B8ECE5',
+  pink: '#FF5571',
+  pinkSoft: '#FFE8ED',
+  border: '#E8EAEE',
+};
+
+function firstName(fullName?: string | null) {
+  const cleanName = fullName?.trim();
+  return cleanName ? cleanName.split(/\s+/)[0] : 'Paciente';
+}
+
+function formatCurrentDate() {
+  const value = new Intl.DateTimeFormat('pt-BR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+  }).format(new Date());
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
 
 export default function HomeScreen() {
-  const router = useRouter();
+  const [patientName, setPatientName] = useState(() => firstName(auth.currentUser?.displayName));
+  const [medicationTaken, setMedicationTaken] = useState(false);
+  const currentDate = useMemo(formatCurrentDate, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadPatientName() {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      setPatientName(firstName(user.displayName));
+
+      try {
+        const profileSnapshot = await getDoc(doc(db, 'usuarios', user.uid));
+        const profileName = profileSnapshot.data()?.nome;
+
+        if (active && typeof profileName === 'string') {
+          setPatientName(firstName(profileName));
+        }
+      } catch {
+        // O displayName do Firebase Auth permanece como alternativa offline.
+      }
+    }
+
+    loadPatientName();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
-        {/* Cabeçalho */}
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View>
-            <Text style={styles.saudacao}>Olá, Paciente</Text>
-            <Text style={styles.subtitulo}>Acompanhamento em dia</Text>
-          </View>
-          <Pressable style={styles.perfilBtn}>
-            <Ionicons name="person-outline" size={22} color="#0E766D" />
-          </Pressable>
-        </View>
-
-        {/* Card de Resumo das Comorbidades */}
-        <View style={styles.statusCard}>
-          <View style={styles.statusHeader}>
-            <Ionicons name="pulse-outline" size={20} color="#0E766D" />
-            <Text style={styles.statusTitulo}>Últimas Aferições</Text>
+            <Text style={styles.greeting}>Olá, {patientName}!</Text>
+            <Text style={styles.date}>{currentDate}</Text>
           </View>
 
-          <View style={styles.metricasContainer}>
-            <View style={styles.metricaItem}>
-              <Text style={styles.metricaLabel}>Pressão Arterial</Text>
-              <Text style={styles.metricaValor}>120/80 <Text style={styles.unidade}>mmHg</Text></Text>
-              <View style={[styles.tagStatus, { backgroundColor: '#E8F5E9' }]}>
-                <Text style={[styles.tagTexto, { color: '#2E7D32' }]}>Normal</Text>
-              </View>
-            </View>
-
-            <View style={styles.divisorVertical} />
-
-            <View style={styles.metricaItem}>
-              <Text style={styles.metricaLabel}>Glicemia (Jejum)</Text>
-              <Text style={styles.metricaValor}>95 <Text style={styles.unidade}>mg/dL</Text></Text>
-              <View style={[styles.tagStatus, { backgroundColor: '#E8F5E9' }]}>
-                <Text style={[styles.tagTexto, { color: '#2E7D32' }]}>Controlada</Text>
-              </View>
-            </View>
+          <View style={styles.headerActions}>
+            <Pressable style={styles.iconButton} accessibilityLabel="Abrir notificações">
+              <Ionicons name="notifications-outline" size={20} color={COLORS.teal} />
+            </Pressable>
+            <Pressable style={styles.avatar} accessibilityLabel="Abrir perfil">
+              <Ionicons name="person" size={21} color={COLORS.tealDark} />
+            </Pressable>
           </View>
         </View>
 
-        {/* Seção de Ações Rápidas */}
-        <Text style={styles.secaoTitulo}>Registros e Cuidados</Text>
-
-        <View style={styles.grid}>
-          {/* Card Pressão */}
-          <Pressable style={styles.cardAcao}>
-            <View style={[styles.iconeContainer, { backgroundColor: '#FDE8E8' }]}>
-              <Ionicons name="heart-outline" size={26} color="#E02424" />
+        <View style={styles.metricsRow}>
+          <View style={styles.metricCard}>
+            <View style={styles.metricTopRow}>
+              <Text style={styles.metricLabel}>Glicose</Text>
+              <View style={styles.fastBadge}><Text style={styles.fastBadgeText}>Jejum</Text></View>
             </View>
-            <Text style={styles.cardTitulo}>Pressão</Text>
-            <Text style={styles.cardSub}>Registrar aferição</Text>
-          </Pressable>
-
-          {/* Card Glicemia */}
-          <Pressable style={styles.cardAcao}>
-            <View style={[styles.iconeContainer, { backgroundColor: '#E1EFFE' }]}>
-              <Ionicons name="water-outline" size={26} color="#1A56DB" />
+            <View style={styles.metricValueRow}>
+              <Text style={[styles.metricValue, { color: COLORS.teal }]}>98</Text>
+              <Text style={styles.metricUnit}>mg/dL</Text>
             </View>
-            <Text style={styles.cardTitulo}>Glicemia</Text>
-            <Text style={styles.cardSub}>Nível de glicose</Text>
-          </Pressable>
-
-          {/* Card Medicamentos */}
-          <Pressable style={styles.cardAcao}>
-            <View style={[styles.iconeContainer, { backgroundColor: '#FEF08A' }]}>
-              <Ionicons name="medkit-outline" size={26} color="#A16207" />
+            <View style={styles.statusRow}>
+              <Ionicons name="trending-down" size={14} color={COLORS.teal} />
+              <Text style={styles.goodStatus}>Estável</Text>
+              <Text style={styles.statusTime}>• Há 1h</Text>
             </View>
-            <Text style={styles.cardTitulo}>Remédios</Text>
-            <Text style={styles.cardSub}>Horários e doses</Text>
-          </Pressable>
+          </View>
 
-          {/* Card Consultas */}
-          <Pressable style={styles.cardAcao}>
-            <View style={[styles.iconeContainer, { backgroundColor: '#E6F4EA' }]}>
-              <Ionicons name="calendar-outline" size={26} color="#0E766D" />
+          <View style={styles.metricCard}>
+            <View style={styles.metricTopRow}>
+              <Text style={styles.metricLabel}>Pressão</Text>
+              <View style={styles.normalBadge}><Text style={styles.normalBadgeText}>Normal</Text></View>
             </View>
-            <Text style={styles.cardTitulo}>Consultas</Text>
-            <Text style={styles.cardSub}>Próximas visitas</Text>
-          </Pressable>
+            <View style={styles.metricValueRow}>
+              <Text style={styles.pressureValue}>120</Text>
+              <Text style={styles.pressureDivider}>/</Text>
+              <Text style={styles.pressureValue}>80</Text>
+              <Text style={styles.metricUnit}>mmHg</Text>
+            </View>
+            <View style={styles.statusRow}>
+              <Ionicons name="checkmark-circle-outline" size={14} color={COLORS.muted} />
+              <Text style={styles.neutralStatus}>Aferida hoje cedo</Text>
+            </View>
+          </View>
         </View>
 
-        {/* Card Informativo */}
-        <View style={styles.infoCard}>
-          <Ionicons name="information-circle-outline" size={22} color="#0E766D" />
-          <Text style={styles.infoTexto}>
-            Mantenha as medições atualizadas para gerar relatórios precisos ao seu médico assistente.
-          </Text>
+        <View style={styles.adherenceCard}>
+          <View style={styles.progressRing}><Text style={styles.progressText}>85%</Text></View>
+          <View style={styles.adherenceText}>
+            <Text style={styles.cardTitle}>Adesão aos Medicamentos</Text>
+            <Text style={styles.cardDescription}>Você tomou 3 de 4 doses programadas para hoje.</Text>
+          </View>
         </View>
 
+        <View style={styles.medicationCard}>
+          <View style={styles.medicationHeader}>
+            <View style={styles.nextMedication}>
+              <Ionicons name="time-outline" size={17} color={COLORS.teal} />
+              <Text style={styles.nextMedicationText}>Próxima medicação às 20:00</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={19} color={COLORS.teal} />
+          </View>
+
+          <View style={styles.medicationBody}>
+            <View style={styles.medicationInfo}>
+              <Text style={styles.medicationName}>Cloridrato de Metformina</Text>
+              <Text style={styles.medicationDose}>850 mg • 1 comprimido com jantar</Text>
+            </View>
+            <Pressable
+              style={[styles.takeButton, medicationTaken && styles.takenButton]}
+              onPress={() => setMedicationTaken(current => !current)}
+              accessibilityRole="button"
+            >
+              <Text style={styles.takeButtonText}>{medicationTaken ? 'Tomado' : 'Tomar'}</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.tipCard}>
+          <View style={styles.tipIcon}>
+            <Ionicons name="heart-outline" size={24} color={COLORS.pink} />
+          </View>
+          <View style={styles.tipContent}>
+            <Text style={styles.tipLabel}>Dica de Saúde</Text>
+            <Text style={styles.tipText}>
+              A caminhada leve após a refeição ajuda a diminuir os picos de glicose pós-prandial.
+            </Text>
+          </View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F4F8F7',
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 32,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  saudacao: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333E3C',
-  },
-  subtitulo: {
-    fontSize: 14,
-    color: '#8A9A96',
-    marginTop: 2,
-  },
-  perfilBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E0EAE8',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statusCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#E0EAE8',
-    marginBottom: 28,
-  },
-  statusHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  statusTitulo: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#333E3C',
-  },
-  metricasContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  metricaItem: {
-    flex: 1,
-  },
-  metricaLabel: {
-    fontSize: 13,
-    color: '#8A9A96',
-    marginBottom: 4,
-  },
-  metricaValor: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333E3C',
-  },
-  unidade: {
-    fontSize: 12,
-    fontWeight: 'normal',
-    color: '#8A9A96',
-  },
-  tagStatus: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginTop: 6,
-  },
-  tagTexto: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  divisorVertical: {
-    width: 1,
-    height: 48,
-    backgroundColor: '#E0EAE8',
-    marginHorizontal: 16,
-  },
-  secaoTitulo: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#333E3C',
-    marginBottom: 16,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 24,
-  },
-  cardAcao: {
-    width: '48%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E0EAE8',
-  },
-  iconeContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  cardTitulo: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#333E3C',
-  },
-  cardSub: {
-    fontSize: 12,
-    color: '#8A9A96',
-    marginTop: 2,
-  },
-  infoCard: {
-    flexDirection: 'row',
-    backgroundColor: '#E6F4EA',
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
-    gap: 12,
-  },
-  infoTexto: {
-    flex: 1,
-    fontSize: 12,
-    color: '#0E766D',
-    lineHeight: 18,
-  },
+  safeArea: { flex: 1, backgroundColor: COLORS.background },
+  content: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 28 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, paddingHorizontal: 4 },
+  greeting: { color: COLORS.text, fontSize: 22, fontWeight: '800' },
+  date: { color: COLORS.muted, fontSize: 12, marginTop: 2 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  iconButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
+  avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#DDF2EF', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: COLORS.card },
+  metricsRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  metricCard: { flex: 1, minHeight: 112, backgroundColor: COLORS.card, borderRadius: 20, padding: 14, borderWidth: 1, borderColor: COLORS.border },
+  metricTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  metricLabel: { color: COLORS.muted, fontSize: 12 },
+  fastBadge: { backgroundColor: COLORS.tealSoft, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9 },
+  fastBadgeText: { color: COLORS.tealDark, fontSize: 10, fontWeight: '700' },
+  normalBadge: { backgroundColor: COLORS.pinkSoft, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9 },
+  normalBadgeText: { color: COLORS.pink, fontSize: 10, fontWeight: '700' },
+  metricValueRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 9 },
+  metricValue: { fontSize: 28, lineHeight: 31, fontWeight: '800' },
+  pressureValue: { color: COLORS.text, fontSize: 25, lineHeight: 31, fontWeight: '800' },
+  pressureDivider: { color: COLORS.muted, fontSize: 19, marginHorizontal: 2 },
+  metricUnit: { color: COLORS.muted, fontSize: 10, marginLeft: 4 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 5 },
+  goodStatus: { color: COLORS.teal, fontSize: 10, fontWeight: '700', marginLeft: 3 },
+  neutralStatus: { color: COLORS.muted, fontSize: 10, marginLeft: 3 },
+  statusTime: { color: COLORS.muted, fontSize: 10, marginLeft: 3 },
+  adherenceCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, borderRadius: 20, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border },
+  progressRing: { width: 60, height: 60, borderRadius: 30, borderWidth: 5, borderColor: COLORS.teal, alignItems: 'center', justifyContent: 'center' },
+  progressText: { color: COLORS.text, fontSize: 12, fontWeight: '800' },
+  adherenceText: { flex: 1, marginLeft: 14 },
+  cardTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  cardDescription: { color: COLORS.muted, fontSize: 11, lineHeight: 16, marginTop: 4 },
+  medicationCard: { backgroundColor: COLORS.tealSoft, borderRadius: 20, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: COLORS.tealBorder },
+  medicationHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  nextMedication: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  nextMedicationText: { color: COLORS.teal, fontSize: 11, fontWeight: '700' },
+  medicationBody: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
+  medicationInfo: { flex: 1, paddingRight: 8 },
+  medicationName: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  medicationDose: { color: COLORS.muted, fontSize: 10, marginTop: 3 },
+  takeButton: { minWidth: 68, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 12, backgroundColor: COLORS.teal, alignItems: 'center' },
+  takenButton: { backgroundColor: COLORS.tealDark },
+  takeButtonText: { color: COLORS.card, fontSize: 11, fontWeight: '800' },
+  tipCard: { flexDirection: 'row', backgroundColor: COLORS.card, borderRadius: 20, padding: 15, borderWidth: 1, borderColor: COLORS.border },
+  tipIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: COLORS.pinkSoft, alignItems: 'center', justifyContent: 'center' },
+  tipContent: { flex: 1, marginLeft: 12 },
+  tipLabel: { color: COLORS.pink, fontSize: 11, fontWeight: '800' },
+  tipText: { color: COLORS.text, fontSize: 12, lineHeight: 17, marginTop: 3 },
 });
