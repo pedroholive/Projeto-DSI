@@ -198,8 +198,7 @@ try {
   throw profileError;
 }
 
-setScreen("success");
-    } catch (err: any) {
+router.replace(profile === "professional" ? "/medico-home" : "/(tabs)");    } catch (err: any) {
       switch (err.code) {
         case 'auth/email-already-in-use':
           setError('Já existe uma conta com esse e-mail.');
