@@ -8,13 +8,11 @@ import {
   deleteUser,
   updateProfile,
 } from 'firebase/auth';
-
 import {
   doc,
   serverTimestamp,
   setDoc,
 } from 'firebase/firestore';
-
 import { auth, db } from '../firebaseConfig';
 
 const C = {
@@ -24,15 +22,16 @@ const C = {
 };
 
 type Profile = "patient" | "professional";
+
 type Form = {
   name: string; dob: string; email: string; phone: string;
   emergency: string; password: string; confirm: string;
-  specialty: string; crm: string;
+  specialty: string;
 };
 
 const initial: Form = {
   name: "", dob: "", email: "", phone: "", emergency: "",
-  password: "", confirm: "", specialty: "", crm: "",
+  password: "", confirm: "", specialty: "",
 };
 
 const diabetes = [
@@ -45,6 +44,14 @@ const pressure = [
   "Hipertensão Gestacional",
   "Pré-hipertensão / Em observação",
   "Não sei informar",
+];
+
+const specialties = [
+  "Médico",
+  "Fisioterapeuta",
+  "Enfermeiro",
+  "Nutricionista",
+  "Outros",
 ];
 
 const phoneMask = (v: string) => {
@@ -77,6 +84,7 @@ export default function App() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [form, setForm] = useState<Form>(initial);
+  const [hasMorbidity, setHasMorbidity] = useState<boolean | null>(null);
   const [conditions, setConditions] = useState<string[]>([]);
   const [types, setTypes] = useState<Record<string, string>>({});
   const [agreed, setAgreed] = useState(false);
@@ -90,8 +98,7 @@ export default function App() {
     setForm(f => ({ ...f, [key]: value }));
 
   const emailOK = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(form.email);
-  const specialtyOK = /^[A-Za-zÀ-ÿ\s]{3,}$/.test(form.specialty);
-  const crmOK = /^\d{4,7}$/.test(form.crm);
+
   const passwordOK =
     form.password.length >= 6 &&
     /[A-Z]/.test(form.password) &&
@@ -106,19 +113,13 @@ export default function App() {
       ? [form.name, form.dob, form.email, form.phone, form.emergency,
          form.password, form.confirm]
       : [form.name, form.dob, form.email, form.phone, form.specialty,
-         form.crm, form.password, form.confirm];
+         form.password, form.confirm];
 
     if (fields.some(v => !v.trim()))
       return setError("Preencha todos os campos.");
 
     if (!emailOK)
       return setError("Digite um e-mail com domínio válido.");
-
-    if (profile === "professional" && !specialtyOK)
-      return setError("Digite uma especialidade válida (só letras, mínimo 3 caracteres).");
-
-    if (profile === "professional" && !crmOK)
-      return setError("Digite um CRM válido (apenas números, 4 a 7 dígitos).");
 
     if (!validBirthDate(form.dob))
       return setError("Digite uma data de nascimento válida, a partir de 01/01/1900.");
@@ -135,89 +136,102 @@ export default function App() {
       return setError("Aceite os Termos de Uso e a Política de Privacidade.");
 
     if (profile === "patient") {
-      if (conditions.length === 0)
-        return setError("Selecione uma condição.");
+      if (hasMorbidity === null)
+        return setError("Informe se apresenta alguma morbidade.");
 
-      if (conditions.includes("Diabetes") && !types["Diabetes"])
-        return setError("Selecione uma opção para a condição escolhida.");
+      if (hasMorbidity && conditions.length === 0)
+        return setError("Selecione pelo menos uma morbidade.");
 
-      if (conditions.includes("Hipertensão") && !types["Hipertensão"])
-        return setError("Selecione uma opção para a condição escolhida.");
+      if (hasMorbidity && conditions.includes("Diabetes") && !types["Diabetes"])
+        return setError("Selecione uma opção para Diabetes.");
+
+      if (hasMorbidity && conditions.includes("Hipertensão") && !types["Hipertensão"])
+        return setError("Selecione uma opção para Hipertensão.");
     }
 
     setCarregando(true);
+
     try {
       const credencial = await createUserWithEmailAndPassword(
-  auth,
-  form.email.trim(),
-  form.password
-);
+        auth,
+        form.email.trim(),
+        form.password
+      );
 
-try {
-  await updateProfile(credencial.user, {
-    displayName: form.name.trim(),
-  });
+      try {
+        await updateProfile(credencial.user, {
+          displayName: form.name.trim(),
+        });
 
-  await setDoc(doc(db, "usuarios", credencial.user.uid), {
-    nome: form.name.trim(),
-    email: form.email.trim().toLowerCase(),
-    dataNascimento: form.dob,
-    telefone: form.phone,
-    perfil: profile,
+        await setDoc(doc(db, "usuarios", credencial.user.uid), {
+          nome: form.name.trim(),
+          email: form.email.trim().toLowerCase(),
+          dataNascimento: form.dob,
+          telefone: form.phone,
+          perfil: profile,
 
-    especialidade:
-      profile === "professional"
-        ? form.specialty.trim()
-        : null,
+          especialidade:
+            profile === "professional"
+              ? form.specialty.trim()
+              : null,
 
-    crm:
-      profile === "professional"
-        ? form.crm.trim()
-        : null,
+          telefoneEmergencia:
+            profile === "patient"
+              ? form.emergency
+              : null,
 
-    telefoneEmergencia:
-      profile === "patient"
-        ? form.emergency
-        : null,
+          apresentaMorbidade:
+            profile === "patient"
+              ? hasMorbidity
+              : null,
 
-    condicoes:
-      profile === "patient"
-        ? conditions
-        : [],
+          condicoes:
+            profile === "patient" && hasMorbidity
+              ? conditions
+              : [],
 
-    tiposCondicoes:
-      profile === "patient"
-        ? types
-        : {},
+          tiposCondicoes:
+            profile === "patient" && hasMorbidity
+              ? types
+              : {},
 
-    criadoEm: serverTimestamp(),
-  });
-} catch (profileError) {
-  // Evita deixar uma conta criada sem os dados do perfil.
-  await deleteUser(credencial.user).catch(() => undefined);
-  throw profileError;
-}
+          criadoEm: serverTimestamp(),
+        });
 
-router.replace(profile === "professional" ? "/medico-home" : "/(tabs)");    } catch (err: any) {
+      } catch (profileError) {
+        // Evita deixar uma conta criada sem os dados do perfil.
+        await deleteUser(credencial.user).catch(() => undefined);
+        throw profileError;
+      }
+
+      router.replace(profile === "professional" ? "/medico-home" : "/(tabs)");
+
+    } catch (err: any) {
       switch (err.code) {
         case 'auth/email-already-in-use':
           setError('Já existe uma conta com esse e-mail.');
           break;
+
         case 'auth/invalid-email':
           setError('E-mail inválido.');
           break;
+
         case 'auth/weak-password':
           setError('Senha muito fraca. Escolha uma senha mais forte.');
           break;
+
         case 'auth/network-request-failed':
           setError('Sem conexão com a internet. Verifique sua rede e tente novamente.');
           break;
+
         case 'auth/too-many-requests':
           setError('Muitas tentativas seguidas. Aguarde um instante e tente novamente.');
           break;
+
         default:
           setError('Não foi possível criar a conta. Tente novamente.');
       }
+
     } finally {
       setCarregando(false);
     }
@@ -226,6 +240,7 @@ router.replace(profile === "professional" ? "/medico-home" : "/(tabs)");    } ca
   const reset = () => {
     setProfile(null);
     setForm(initial);
+    setHasMorbidity(null);
     setConditions([]);
     setTypes({});
     setAgreed(false);
@@ -237,12 +252,16 @@ router.replace(profile === "professional" ? "/medico-home" : "/(tabs)");    } ca
     return (
       <Page>
         <Header text="Sua conta foi criada com sucesso!" />
+
         <View style={s.success}>
           <Text style={s.successIcon}>✓</Text>
+
           <Text style={s.successTitle}>Conta criada!</Text>
+
           <Text style={s.successText}>
             Bem-vindo ao Health Sync!{"\n"}Seu perfil está pronto.
           </Text>
+
           <Button text="Ir para o início" onPress={() => router.replace('/login')} />
         </View>
       </Page>
@@ -301,24 +320,23 @@ router.replace(profile === "professional" ? "/medico-home" : "/(tabs)");    } ca
       </Field>
 
       {profile === "professional" && (
-        <>
-          <Field label="Especialidade">
-            <Input
-              value={form.specialty}
-              placeholder="Sua especialidade"
-              onChange={(v: string) => set("specialty", v)}
-            />
-          </Field>
+        <Field label="Especialidade">
+          <View style={s.box}>
+            {specialties.map((item: string) => (
+              <TouchableOpacity
+                key={item}
+                style={s.row}
+                onPress={() => set("specialty", item)}
+              >
+                <View style={[s.smallRadio, form.specialty === item && s.radioActive]}>
+                  {form.specialty === item && <View style={s.dot} />}
+                </View>
 
-          <Field label="CRM">
-            <Input
-              value={form.crm}
-              placeholder="Número do CRM"
-              keyboard="numeric"
-              onChange={(v: string) => set("crm", v)}
-            />
-          </Field>
-        </>
+                <Text style={s.condition}>{item}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Field>
       )}
 
       <Field label="E-mail">
@@ -328,70 +346,102 @@ router.replace(profile === "professional" ? "/medico-home" : "/(tabs)");    } ca
           keyboard="email-address"
           onChange={(v: string) => set("email", v)}
         />
+
         {form.email.length > 0 && !emailOK &&
           <Text style={s.fieldError}>Digite um e-mail válido.</Text>}
       </Field>
 
       {profile === "patient" && (
-        <Field label="Condição que deseja acompanhar">
+        <Field label="Apresenta alguma morbidade?">
           <View style={s.box}>
-            {["Diabetes", "Hipertensão", "Nenhuma"].map((item: string) => (
-              <React.Fragment key={item}>
-                <TouchableOpacity
-                  style={s.row}
-                  onPress={() => {
-                    if (item === "Nenhuma") {
-                      setConditions(["Nenhuma"]);
-                      setTypes({});
-                      return;
-                    }
 
-                    setConditions(prev => {
-                      const current = prev.filter(v => v !== "Nenhuma");
+            <TouchableOpacity
+              style={s.row}
+              onPress={() => {
+                setHasMorbidity(true);
+                setConditions([]);
+                setTypes({});
+              }}
+            >
+              <View style={[s.smallRadio, hasMorbidity === true && s.radioActive]}>
+                {hasMorbidity === true && <View style={s.dot} />}
+              </View>
 
-                      if (current.includes(item)) {
-                        setTypes(prevTypes => {
-                          const next = { ...prevTypes };
-                          delete next[item];
-                          return next;
+              <Text style={s.condition}>Sim</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={s.row}
+              onPress={() => {
+                setHasMorbidity(false);
+                setConditions([]);
+                setTypes({});
+              }}
+            >
+              <View style={[s.smallRadio, hasMorbidity === false && s.radioActive]}>
+                {hasMorbidity === false && <View style={s.dot} />}
+              </View>
+
+              <Text style={s.condition}>Não</Text>
+            </TouchableOpacity>
+
+            {hasMorbidity === true && (
+              <View style={s.options}>
+                {["Diabetes", "Hipertensão"].map((item: string) => (
+                  <React.Fragment key={item}>
+
+                    <TouchableOpacity
+                      style={s.row}
+                      onPress={() => {
+                        setConditions(prev => {
+                          if (prev.includes(item)) {
+                            setTypes(prevTypes => {
+                              const next = { ...prevTypes };
+                              delete next[item];
+                              return next;
+                            });
+
+                            return prev.filter(v => v !== item);
+                          }
+
+                          return [...prev, item];
                         });
-                        return current.filter(v => v !== item);
-                      }
+                      }}
+                    >
+                      <View style={[s.check, conditions.includes(item) && s.checked]}>
+                        {conditions.includes(item) && <Text style={s.tick}>✓</Text>}
+                      </View>
 
-                      return [...current, item];
-                    });
-                  }}
-                >
-                  <View style={[s.check, conditions.includes(item) && s.checked]}>
-                    {conditions.includes(item) && <Text style={s.tick}>✓</Text>}
-                  </View>
-                  <Text style={s.condition}>
-                    {item === "Nenhuma"
-                      ? "Nenhuma, apenas prevenção"
-                      : item}
-                  </Text>
-                </TouchableOpacity>
+                      <Text style={s.condition}>{item}</Text>
+                    </TouchableOpacity>
 
-                {conditions.includes(item) && item !== "Nenhuma" && (
-                  <View style={s.options}>
-                    {(item === "Diabetes" ? diabetes : pressure).map(
-                      (v: string) => (
-                        <TouchableOpacity
-                          key={v}
-                          style={s.option}
-                          onPress={() => setTypes(prev => ({ ...prev, [item]: v }))}
-                        >
-                          <View style={[s.smallRadio, types[item] === v && s.radioActive]}>
-                            {types[item] === v && <View style={s.dot} />}
-                          </View>
-                          <Text style={s.optionText}>{v}</Text>
-                        </TouchableOpacity>
-                      )
+                    {conditions.includes(item) && (
+                      <View style={s.options}>
+                        {(item === "Diabetes" ? diabetes : pressure).map(
+                          (v: string) => (
+                            <TouchableOpacity
+                              key={v}
+                              style={s.option}
+                              onPress={() =>
+                                setTypes(prev => ({ ...prev, [item]: v }))
+                              }
+                            >
+                              <View style={[s.smallRadio, types[item] === v && s.radioActive]}>
+                                {types[item] === v && <View style={s.dot} />}
+                              </View>
+
+                              <Text style={s.optionText}>{v}</Text>
+                            </TouchableOpacity>
+                          )
+                        )}
+                      </View>
                     )}
-                  </View>
-                )}
-              </React.Fragment>
-            ))}
+
+                  </React.Fragment>
+                ))}
+              </View>
+            )}
+
           </View>
         </Field>
       )}
@@ -446,6 +496,7 @@ router.replace(profile === "professional" ? "/medico-home" : "/(tabs)");    } ca
         <View style={[s.check, agreed && s.checked]}>
           {agreed && <Text style={s.tick}>✓</Text>}
         </View>
+
         <Text style={s.termsText}>
           Li e concordo com os <Text style={s.link}>Termos de Uso</Text> e a{" "}
           <Text style={s.link}>Política de Privacidade</Text>.
@@ -479,12 +530,13 @@ function Header({ text }: { text: string }) {
   return (
     <View style={s.header}>
       <View style={s.logo}>
-  <Image
-    source={require('../assets/images/logo-healthsync.png')}
-    style={s.logoImagem}
-    resizeMode="contain"
-  />
-</View>
+        <Image
+          source={require('../assets/images/logo-healthsync.png')}
+          style={s.logoImagem}
+          resizeMode="contain"
+        />
+      </View>
+
       <Text style={s.title}>Health Sync</Text>
       <Text style={s.subtitle}>{text}</Text>
     </View>
@@ -505,6 +557,7 @@ function ChoiceCard({
         <Text style={[s.cardTitle, active && { color: C.white }]}>{title}</Text>
         <Text style={[s.cardText, active && { color: "#d9eeee" }]}>{text}</Text>
       </View>
+
       <View style={[s.radio, active && s.radioActive]}>
         {active && <View style={s.dot} />}
       </View>
@@ -565,6 +618,7 @@ function Password({
         autoCapitalize="none"
         onChangeText={onChange}
       />
+
       <TouchableOpacity style={s.toggle} onPress={toggle}>
         <Text style={s.toggleText}>{show ? "Ocultar" : "Mostrar"}</Text>
       </TouchableOpacity>
@@ -601,159 +655,242 @@ const s = StyleSheet.create({
   page: { padding: 20, paddingTop: 40, paddingBottom: 60 },
 
   header: { alignItems: "center", marginBottom: 25, gap: 7 },
+
   logo: {
-  width: 64,
-  height: 64,
-  borderRadius: 18,
-  backgroundColor: '#DCEAE7',
-  alignItems: 'center',
-  justifyContent: 'center',
-},
+    width: 64,
+    height: 64,
+    borderRadius: 18,
+    backgroundColor: '#DCEAE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-logoImagem: {
-  width: 44,
-  height: 44,
-},
+  logoImagem: {
+    width: 44,
+    height: 44,
+  },
 
-title: {
-  fontSize: 22,
-  fontWeight: 'bold',
-  color: C.dark,
-},
+  title: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: C.dark,
+  },
 
-subtitle: {
-  color: C.gray,
-  fontSize: 13,
-  textAlign: 'center',
-},
+  subtitle: {
+    color: C.gray,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+
   card: {
     flexDirection: "row",
-     alignItems: "center",
-      gap: 12,
+    alignItems: "center",
+    gap: 12,
     backgroundColor: C.white,
-     padding: 15,
-      borderRadius: 16,
+    padding: 15,
+    borderRadius: 16,
     borderWidth: 1.5,
-     borderColor: C.border,
-      marginBottom: 12,
+    borderColor: C.border,
+    marginBottom: 12,
   },
+
   cardActive: { backgroundColor: C.teal, borderColor: C.teal },
   cardTitle: { color: C.dark, fontWeight: "600", fontSize: 14 },
   cardText: { color: C.gray, fontSize: 12, marginTop: 2 },
 
   radio: {
     width: 20,
-     height: 20, 
-     borderRadius: 10, 
-     borderWidth: 2,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
     borderColor: C.border,
-     alignItems: "center", 
-     justifyContent: "center",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   radioActive: {
-     borderColor: C.teal,
-      backgroundColor: C.white 
-    },
+    borderColor: C.teal,
+    backgroundColor: C.white
+  },
 
   dot: {
-     width: 8,
-     height: 8, 
-     borderRadius: 4,
-      backgroundColor: C.teal },
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: C.teal
+  },
 
   button: {
     backgroundColor: C.teal,
-     padding: 15,
-      borderRadius: 28,
+    padding: 15,
+    borderRadius: 28,
     alignItems: "center",
-     marginTop: 7,
+    marginTop: 7,
   },
 
   disabled: {
-     backgroundColor: "#b8d0ce" },
+    backgroundColor: "#b8d0ce"
+  },
 
   buttonText: { color: C.white, fontWeight: "600" },
 
   back: { color: C.teal, fontWeight: "600", marginBottom: 15 },
+
   field: { marginBottom: 15 },
-  label: { color: C.dark, fontSize: 14, fontWeight: "500", marginBottom: 6 },
+
+  label: {
+    color: C.dark,
+    fontSize: 14,
+    fontWeight: "500",
+    marginBottom: 6
+  },
 
   input: {
     backgroundColor: C.white,
-     borderWidth: 1,
-      borderColor: C.border,
-    borderRadius: 15, 
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 15,
     padding: 14,
-     color: C.dark,
-     fontSize: 14,
+    color: C.dark,
+    fontSize: 14,
   },
+
   fieldError: { color: C.error, fontSize: 11, marginTop: 4 },
 
   box: {
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.border,
-    borderRadius: 15, overflow: "hidden",
+    backgroundColor: C.white,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 15,
+    overflow: "hidden",
   },
+
   row: {
-    flexDirection: "row", alignItems: "center", gap: 10, padding: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 13,
   },
+
   check: {
-    width: 20, height: 20, borderRadius: 4, borderWidth: 1.5,
-    borderColor: "#b0c8c6", alignItems: "center", justifyContent: "center",
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: "#b0c8c6",
+    alignItems: "center",
+    justifyContent: "center",
   },
+
   checked: { backgroundColor: C.teal, borderColor: C.teal },
+
   tick: { color: C.white, fontWeight: "bold", fontSize: 11 },
+
   condition: { color: C.dark, fontSize: 13 },
 
   options: {
-    backgroundColor: C.light, padding: 10,
-    borderTopWidth: 1, borderTopColor: C.border,
+    backgroundColor: C.light,
+    padding: 10,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
   },
+
   option: {
-    flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingVertical: 6,
   },
+
   smallRadio: {
-    width: 17, height: 17, borderRadius: 9, borderWidth: 1.5,
-    borderColor: C.border, alignItems: "center", justifyContent: "center",
+    width: 17,
+    height: 17,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    alignItems: "center",
+    justifyContent: "center",
   },
+
   optionText: { flex: 1, color: C.dark, fontSize: 11 },
 
   rules: {
-    backgroundColor: C.light, padding: 10, borderRadius: 10, marginTop: 7,
+    backgroundColor: C.light,
+    padding: 10,
+    borderRadius: 10,
+    marginTop: 7,
   },
+
   rule: { color: C.gray, fontSize: 11, marginVertical: 2 },
 
   toggle: {
-    position: "absolute", right: 14, top: 14,
+    position: "absolute",
+    right: 14,
+    top: 14,
   },
+
   toggleText: { color: C.teal, fontSize: 11, fontWeight: "600" },
 
   terms: {
-    flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    marginBottom: 8,
   },
-  termsText: { flex: 1, color: C.gray, fontSize: 11, lineHeight: 17 },
+
+  termsText: {
+    flex: 1,
+    color: C.gray,
+    fontSize: 11,
+    lineHeight: 17
+  },
+
   link: { color: C.teal, fontWeight: "600" },
 
   error: {
-    color: C.error, textAlign: "center", fontSize: 12, marginBottom: 7,
+    color: C.error,
+    textAlign: "center",
+    fontSize: 12,
+    marginBottom: 7,
   },
+
   footer: {
-    textAlign: "center", color: C.gray, fontSize: 12, marginTop: 12,
+    textAlign: "center",
+    color: C.gray,
+    fontSize: 12,
+    marginTop: 12,
   },
 
   success: {
-    backgroundColor: C.white, padding: 25, borderRadius: 20,
+    backgroundColor: C.white,
+    padding: 25,
+    borderRadius: 20,
     alignItems: "center",
   },
+
   successIcon: {
-    backgroundColor: C.success, color: C.white, width: 65, height: 65,
-    borderRadius: 33, textAlign: "center", lineHeight: 65,
-    fontSize: 38, fontWeight: "bold",
+    backgroundColor: C.success,
+    color: C.white,
+    width: 65,
+    height: 65,
+    borderRadius: 33,
+    textAlign: "center",
+    lineHeight: 65,
+    fontSize: 38,
+    fontWeight: "bold",
   },
+
   successTitle: {
-    color: C.dark, fontSize: 20, fontWeight: "bold", marginTop: 14,
+    color: C.dark,
+    fontSize: 20,
+    fontWeight: "bold",
+    marginTop: 14,
   },
+
   successText: {
-    color: C.gray, textAlign: "center", lineHeight: 20, marginVertical: 10,
+    color: C.gray,
+    textAlign: "center",
+    lineHeight: 20,
+    marginVertical: 10,
   },
 });
