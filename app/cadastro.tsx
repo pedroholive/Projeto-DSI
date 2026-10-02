@@ -479,12 +479,12 @@ function Header({ text }: { text: string }) {
   return (
     <View style={s.header}>
       <View style={s.logo}>
-        <Image
-          source={require('../assets/images/logo-healthsync.png')}
-          style={{ width: 36, height: 36 }}
-          resizeMode="contain"
-        />
-      </View>
+  <Image
+    source={require('../assets/images/logo-healthsync.png')}
+    style={s.logoImagem}
+    resizeMode="contain"
+  />
+</View>
       <Text style={s.title}>Health Sync</Text>
       <Text style={s.subtitle}>{text}</Text>
     </View>
@@ -602,34 +602,77 @@ const s = StyleSheet.create({
 
   header: { alignItems: "center", marginBottom: 25, gap: 7 },
   logo: {
-    width: 55, height: 55, borderRadius: 16, backgroundColor: C.teal,
-    alignItems: "center", justifyContent: "center",
-  },
-  logoText: { color: C.white, fontSize: 30, fontWeight: "bold" },
-  title: { fontSize: 22, fontWeight: "bold", color: C.dark },
-  subtitle: { color: C.gray, fontSize: 13, textAlign: "center" },
+  width: 64,
+  height: 64,
+  borderRadius: 18,
+  backgroundColor: '#DCEAE7',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
 
+logoImagem: {
+  width: 44,
+  height: 44,
+},
+
+title: {
+  fontSize: 22,
+  fontWeight: 'bold',
+  color: C.dark,
+},
+
+subtitle: {
+  color: C.gray,
+  fontSize: 13,
+  textAlign: 'center',
+},
   card: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    backgroundColor: C.white, padding: 15, borderRadius: 16,
-    borderWidth: 1.5, borderColor: C.border, marginBottom: 12,
+    flexDirection: "row",
+     alignItems: "center",
+      gap: 12,
+    backgroundColor: C.white,
+     padding: 15,
+      borderRadius: 16,
+    borderWidth: 1.5,
+     borderColor: C.border,
+      marginBottom: 12,
   },
   cardActive: { backgroundColor: C.teal, borderColor: C.teal },
   cardTitle: { color: C.dark, fontWeight: "600", fontSize: 14 },
   cardText: { color: C.gray, fontSize: 12, marginTop: 2 },
 
   radio: {
-    width: 20, height: 20, borderRadius: 10, borderWidth: 2,
-    borderColor: C.border, alignItems: "center", justifyContent: "center",
+    width: 20,
+     height: 20, 
+     borderRadius: 10, 
+     borderWidth: 2,
+    borderColor: C.border,
+     alignItems: "center", 
+     justifyContent: "center",
   },
-  radioActive: { borderColor: C.teal, backgroundColor: C.white },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.teal },
+
+  radioActive: {
+     borderColor: C.teal,
+      backgroundColor: C.white 
+    },
+
+  dot: {
+     width: 8,
+     height: 8, 
+     borderRadius: 4,
+      backgroundColor: C.teal },
 
   button: {
-    backgroundColor: C.teal, padding: 15, borderRadius: 28,
-    alignItems: "center", marginTop: 7,
+    backgroundColor: C.teal,
+     padding: 15,
+      borderRadius: 28,
+    alignItems: "center",
+     marginTop: 7,
   },
-  disabled: { backgroundColor: "#b8d0ce" },
+
+  disabled: {
+     backgroundColor: "#b8d0ce" },
+
   buttonText: { color: C.white, fontWeight: "600" },
 
   back: { color: C.teal, fontWeight: "600", marginBottom: 15 },
@@ -637,8 +680,13 @@ const s = StyleSheet.create({
   label: { color: C.dark, fontSize: 14, fontWeight: "500", marginBottom: 6 },
 
   input: {
-    backgroundColor: C.white, borderWidth: 1, borderColor: C.border,
-    borderRadius: 15, padding: 14, color: C.dark, fontSize: 14,
+    backgroundColor: C.white,
+     borderWidth: 1,
+      borderColor: C.border,
+    borderRadius: 15, 
+    padding: 14,
+     color: C.dark,
+     fontSize: 14,
   },
   fieldError: { color: C.error, fontSize: 11, marginTop: 4 },
 
