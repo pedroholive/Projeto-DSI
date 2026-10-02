@@ -1,255 +1,797 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import React, { useEffect, useState } from 'react';
+
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+} from 'react-native';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+
+import { auth, db } from '../../firebaseConfig';
+
+
 export default function HomeScreen() {
-  const router = useRouter();
+  const [nomePaciente, setNomePaciente] = useState('Paciente');
+  const [agora, setAgora] = useState(new Date());
+
+
+  // =========================================================
+  // ATUALIZA DATA E HORÁRIO
+  // =========================================================
+
+  useEffect(() => {
+    const intervalo = setInterval(() => {
+      setAgora(new Date());
+    }, 60000);
+
+    return () => clearInterval(intervalo);
+  }, []);
+
+
+  // =========================================================
+  // BUSCA O NOME DO USUÁRIO LOGADO
+  // =========================================================
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      async (currentUser) => {
+        if (!currentUser) {
+          return;
+        }
+
+        try {
+          const perfilRef = doc(
+            db,
+            'usuarios',
+            currentUser.uid
+          );
+
+          const perfilSnapshot = await getDoc(perfilRef);
+
+          if (perfilSnapshot.exists()) {
+            const perfil = perfilSnapshot.data();
+
+            if (perfil.nome) {
+              setNomePaciente(perfil.nome);
+              return;
+            }
+          }
+
+          // Caso não encontre o nome no Firestore,
+          // tenta utilizar o displayName do Authentication.
+          if (currentUser.displayName) {
+            setNomePaciente(currentUser.displayName);
+          }
+
+        } catch (error) {
+          console.error(
+            'Erro ao carregar nome do paciente:',
+            error
+          );
+        }
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
+
+  // =========================================================
+  // FORMATAÇÃO DA DATA E HORÁRIO
+  // =========================================================
+
+  const dataAtual = agora.toLocaleDateString(
+    'pt-BR',
+    {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    }
+  );
+
+  const horaAtual = agora.toLocaleTimeString(
+    'pt-BR',
+    {
+      hour: '2-digit',
+      minute: '2-digit',
+    }
+  );
+
+  const dataFormatada =
+    dataAtual.charAt(0).toUpperCase() +
+    dataAtual.slice(1);
+
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
-        {/* Cabeçalho */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.saudacao}>Olá, Paciente</Text>
-            <Text style={styles.subtitulo}>Acompanhamento em dia</Text>
-          </View>
-          <Pressable style={styles.perfilBtn}>
-            <Ionicons name="person-outline" size={22} color="#0E766D" />
-          </Pressable>
-        </View>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.content}>
 
-        {/* Card de Resumo das Comorbidades */}
-        <View style={styles.statusCard}>
-          <View style={styles.statusHeader}>
-            <Ionicons name="pulse-outline" size={20} color="#0E766D" />
-            <Text style={styles.statusTitulo}>Últimas Aferições</Text>
+          {/* =====================================================
+              CABEÇALHO
+          ===================================================== */}
+
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.saudacao}>
+                Olá, {nomePaciente}!
+              </Text>
+
+              <Text style={styles.data}>
+                {dataFormatada} • {horaAtual}
+              </Text>
+            </View>
+
+            <View style={styles.headerActions}>
+              <Pressable style={styles.iconButton}>
+                <Ionicons
+                  name="notifications-outline"
+                  size={21}
+                  color="#0E766D"
+                />
+              </Pressable>
+
+              <Pressable style={styles.perfilBtn}>
+                <Ionicons
+                  name="person-outline"
+                  size={21}
+                  color="#0E766D"
+                />
+              </Pressable>
+            </View>
           </View>
 
-          <View style={styles.metricasContainer}>
-            <View style={styles.metricaItem}>
-              <Text style={styles.metricaLabel}>Pressão Arterial</Text>
-              <Text style={styles.metricaValor}>120/80 <Text style={styles.unidade}>mmHg</Text></Text>
-              <View style={[styles.tagStatus, { backgroundColor: '#E8F5E9' }]}>
-                <Text style={[styles.tagTexto, { color: '#2E7D32' }]}>Normal</Text>
+
+          {/* =====================================================
+              GLICOSE E PRESSÃO
+          ===================================================== */}
+
+          <View style={styles.metricasRow}>
+
+            {/* Glicose */}
+
+            <View style={styles.metricaCard}>
+              <View style={styles.metricaHeader}>
+                <Text style={styles.metricaTitulo}>
+                  Glicose
+                </Text>
+
+                <View style={styles.tagJejum}>
+                  <Text style={styles.tagJejumTexto}>
+                    Jejum
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.valorRow}>
+                <Text style={styles.glicoseValor}>
+                  98
+                </Text>
+
+                <Text style={styles.unidade}>
+                  mg/dL
+                </Text>
+              </View>
+
+              <View style={styles.statusRow}>
+                <Ionicons
+                  name="trending-down-outline"
+                  size={16}
+                  color="#0E9F8C"
+                />
+
+                <Text style={styles.statusVerde}>
+                  Estável • Há 1h
+                </Text>
               </View>
             </View>
 
-            <View style={styles.divisorVertical} />
 
-            <View style={styles.metricaItem}>
-              <Text style={styles.metricaLabel}>Glicemia (Jejum)</Text>
-              <Text style={styles.metricaValor}>95 <Text style={styles.unidade}>mg/dL</Text></Text>
-              <View style={[styles.tagStatus, { backgroundColor: '#E8F5E9' }]}>
-                <Text style={[styles.tagTexto, { color: '#2E7D32' }]}>Controlada</Text>
+            {/* Pressão */}
+
+            <View style={styles.metricaCard}>
+              <View style={styles.metricaHeader}>
+                <Text style={styles.metricaTitulo}>
+                  Pressão
+                </Text>
+
+                <View style={styles.tagNormal}>
+                  <Text style={styles.tagNormalTexto}>
+                    Normal
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.valorRow}>
+                <Text style={styles.pressaoValor}>
+                  120/80
+                </Text>
+
+                <Text style={styles.unidade}>
+                  mmHg
+                </Text>
+              </View>
+
+              <View style={styles.statusRow}>
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={16}
+                  color="#0E9F8C"
+                />
+
+                <Text style={styles.statusSecundario}>
+                  Aferida hoje
+                </Text>
               </View>
             </View>
+
           </View>
+
+
+          {/* =====================================================
+              ADESÃO AOS MEDICAMENTOS
+          ===================================================== */}
+
+          <View style={styles.adesaoCard}>
+
+            <View style={styles.progresso}>
+              <Text style={styles.progressoTexto}>
+                85%
+              </Text>
+            </View>
+
+            <View style={styles.adesaoConteudo}>
+              <Text style={styles.cardTitulo}>
+                Adesão aos Medicamentos
+              </Text>
+
+              <Text style={styles.cardDescricao}>
+                Você tomou 3 de 4 doses programadas para hoje.
+              </Text>
+            </View>
+
+          </View>
+
+
+          {/* =====================================================
+              PRÓXIMA MEDICAÇÃO
+          ===================================================== */}
+
+          <View style={styles.medicacaoCard}>
+
+            <View style={styles.medicacaoHeader}>
+              <View style={styles.medicacaoHorario}>
+                <Ionicons
+                  name="time-outline"
+                  size={20}
+                  color="#0E766D"
+                />
+
+                <Text style={styles.medicacaoHorarioTexto}>
+                  Próxima medicação às 20:00
+                </Text>
+              </View>
+
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color="#0E766D"
+              />
+            </View>
+
+            <View style={styles.medicacaoConteudo}>
+
+              <View style={styles.medicacaoInfo}>
+                <Text style={styles.medicacaoNome}>
+                  Cloridrato de Metformina
+                </Text>
+
+                <Text style={styles.medicacaoDose}>
+                  850 mg • 1 comprimido com jantar
+                </Text>
+              </View>
+
+              <Pressable style={styles.botaoTomar}>
+                <Text style={styles.botaoTomarTexto}>
+                  Tomar
+                </Text>
+              </Pressable>
+
+            </View>
+
+          </View>
+
+
+          {/* =====================================================
+              DICA DE SAÚDE
+          ===================================================== */}
+
+          <View style={styles.dicaCard}>
+
+            <View style={styles.dicaIcone}>
+              <Ionicons
+                name="heart-outline"
+                size={24}
+                color="#EF476F"
+              />
+            </View>
+
+            <View style={styles.dicaConteudo}>
+              <Text style={styles.dicaTitulo}>
+                Dica de Saúde
+              </Text>
+
+              <Text style={styles.dicaTexto}>
+                A caminhada leve após a refeição pode ajudar
+                no acompanhamento da glicemia.
+              </Text>
+            </View>
+
+          </View>
+
         </View>
-
-        {/* Seção de Ações Rápidas */}
-        <Text style={styles.secaoTitulo}>Registros e Cuidados</Text>
-
-        <View style={styles.grid}>
-          {/* Card Pressão */}
-          <Pressable style={styles.cardAcao}>
-            <View style={[styles.iconeContainer, { backgroundColor: '#FDE8E8' }]}>
-              <Ionicons name="heart-outline" size={26} color="#E02424" />
-            </View>
-            <Text style={styles.cardTitulo}>Pressão</Text>
-            <Text style={styles.cardSub}>Registrar aferição</Text>
-          </Pressable>
-
-          {/* Card Glicemia */}
-          <Pressable style={styles.cardAcao}>
-            <View style={[styles.iconeContainer, { backgroundColor: '#E1EFFE' }]}>
-              <Ionicons name="water-outline" size={26} color="#1A56DB" />
-            </View>
-            <Text style={styles.cardTitulo}>Glicemia</Text>
-            <Text style={styles.cardSub}>Nível de glicose</Text>
-          </Pressable>
-
-          {/* Card Medicamentos */}
-          <Pressable style={styles.cardAcao}>
-            <View style={[styles.iconeContainer, { backgroundColor: '#FEF08A' }]}>
-              <Ionicons name="medkit-outline" size={26} color="#A16207" />
-            </View>
-            <Text style={styles.cardTitulo}>Remédios</Text>
-            <Text style={styles.cardSub}>Horários e doses</Text>
-          </Pressable>
-
-          {/* Card Consultas */}
-          <Pressable style={styles.cardAcao}>
-            <View style={[styles.iconeContainer, { backgroundColor: '#E6F4EA' }]}>
-              <Ionicons name="calendar-outline" size={26} color="#0E766D" />
-            </View>
-            <Text style={styles.cardTitulo}>Consultas</Text>
-            <Text style={styles.cardSub}>Próximas visitas</Text>
-          </Pressable>
-        </View>
-
-        {/* Card Informativo */}
-        <View style={styles.infoCard}>
-          <Ionicons name="information-circle-outline" size={22} color="#0E766D" />
-          <Text style={styles.infoTexto}>
-            Mantenha as medições atualizadas para gerar relatórios precisos ao seu médico assistente.
-          </Text>
-        </View>
-
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+
 const styles = StyleSheet.create({
+
+  // =========================================================
+  // ESTRUTURA GERAL
+  // =========================================================
+
   container: {
     flex: 1,
-    backgroundColor: '#F4F8F7',
+    backgroundColor: '#F4F6F7',
   },
+
   scrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+  },
+
+  content: {
+    width: '100%',
+    maxWidth: 520,
+
     paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingTop: 16,
     paddingBottom: 32,
   },
+
+
+  // =========================================================
+  // CABEÇALHO
+  // =========================================================
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+
+    marginBottom: 22,
   },
+
   saudacao: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333E3C',
+    fontSize: 25,
+    fontWeight: '700',
+    color: '#273331',
   },
-  subtitulo: {
+
+  data: {
+    marginTop: 4,
+
     fontSize: 14,
-    color: '#8A9A96',
-    marginTop: 2,
+    color: '#7E8D89',
   },
-  perfilBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E0EAE8',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statusCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#E0EAE8',
-    marginBottom: 28,
-  },
-  statusHeader: {
+
+  headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
+
     gap: 8,
-    marginBottom: 16,
   },
-  statusTitulo: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#333E3C',
+
+  iconButton: {
+    width: 42,
+    height: 42,
+
+    borderRadius: 21,
+
+    backgroundColor: '#E6F4F1',
+
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  metricasContainer: {
+
+  perfilBtn: {
+    width: 42,
+    height: 42,
+
+    borderRadius: 21,
+
+    backgroundColor: '#FFFFFF',
+
+    borderWidth: 1,
+    borderColor: '#E0EAE8',
+
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+
+  // =========================================================
+  // CARDS DE GLICOSE E PRESSÃO
+  // =========================================================
+
+  metricasRow: {
+    flexDirection: 'row',
+
+    gap: 12,
+
+    marginBottom: 14,
+  },
+
+  metricaCard: {
+    flex: 1,
+
+    minHeight: 138,
+
+    backgroundColor: '#FFFFFF',
+
+    borderRadius: 22,
+
+    padding: 17,
+
+    borderWidth: 1,
+    borderColor: '#E8EFED',
+
+    shadowColor: '#000000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+
+    elevation: 2,
+  },
+
+  metricaHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+
+    marginBottom: 12,
   },
-  metricaItem: {
-    flex: 1,
+
+  metricaTitulo: {
+    fontSize: 14,
+    color: '#6F7C79',
   },
-  metricaLabel: {
-    fontSize: 13,
-    color: '#8A9A96',
-    marginBottom: 4,
+
+
+  // =========================================================
+  // TAGS
+  // =========================================================
+
+  tagJejum: {
+    backgroundColor: '#E7FAF5',
+
+    borderRadius: 12,
+
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
-  metricaValor: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333E3C',
-  },
-  unidade: {
-    fontSize: 12,
-    fontWeight: 'normal',
-    color: '#8A9A96',
-  },
-  tagStatus: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginTop: 6,
-  },
-  tagTexto: {
+
+  tagJejumTexto: {
+    color: '#0E9F8C',
+
     fontSize: 11,
     fontWeight: '600',
   },
-  divisorVertical: {
-    width: 1,
-    height: 48,
-    backgroundColor: '#E0EAE8',
-    marginHorizontal: 16,
+
+  tagNormal: {
+    backgroundColor: '#FFE8EE',
+
+    borderRadius: 12,
+
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
-  secaoTitulo: {
+
+  tagNormalTexto: {
+    color: '#EF476F',
+
+    fontSize: 11,
+    fontWeight: '600',
+  },
+
+
+  // =========================================================
+  // VALORES
+  // =========================================================
+
+  valorRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+
+    gap: 4,
+  },
+
+  glicoseValor: {
+    fontSize: 29,
+    fontWeight: '700',
+
+    color: '#0E9F8C',
+  },
+
+  pressaoValor: {
+    fontSize: 25,
+    fontWeight: '700',
+
+    color: '#273331',
+  },
+
+  unidade: {
+    fontSize: 11,
+    color: '#7E8D89',
+  },
+
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+
+    gap: 5,
+
+    marginTop: 8,
+  },
+
+  statusVerde: {
+    fontSize: 11,
+    color: '#0E9F8C',
+  },
+
+  statusSecundario: {
+    fontSize: 11,
+    color: '#7E8D89',
+  },
+
+
+  // =========================================================
+  // ADESÃO AOS MEDICAMENTOS
+  // =========================================================
+
+  adesaoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+
+    backgroundColor: '#FFFFFF',
+
+    borderRadius: 22,
+
+    padding: 18,
+
+    borderWidth: 1,
+    borderColor: '#E8EFED',
+
+    marginBottom: 14,
+
+    shadowColor: '#000000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+
+    elevation: 2,
+  },
+
+  progresso: {
+    width: 72,
+    height: 72,
+
+    borderRadius: 36,
+
+    borderWidth: 7,
+    borderColor: '#0E9F8C',
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    marginRight: 16,
+  },
+
+  progressoTexto: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#333E3C',
+
+    color: '#273331',
+  },
+
+  adesaoConteudo: {
+    flex: 1,
+  },
+
+  cardTitulo: {
+    fontSize: 16,
+    fontWeight: '700',
+
+    color: '#273331',
+
+    marginBottom: 5,
+  },
+
+  cardDescricao: {
+    fontSize: 13,
+
+    color: '#6F7C79',
+
+    lineHeight: 19,
+  },
+
+
+  // =========================================================
+  // PRÓXIMA MEDICAÇÃO
+  // =========================================================
+
+  medicacaoCard: {
+    backgroundColor: '#ECFAF6',
+
+    borderWidth: 1,
+    borderColor: '#C8EEE5',
+
+    borderRadius: 22,
+
+    padding: 18,
+
+    marginBottom: 14,
+  },
+
+  medicacaoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+
     marginBottom: 16,
   },
-  grid: {
+
+  medicacaoHorario: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 24,
-  },
-  cardAcao: {
-    width: '48%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E0EAE8',
-  },
-  iconeContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+
+    gap: 8,
   },
-  cardTitulo: {
-    fontSize: 15,
+
+  medicacaoHorarioTexto: {
+    fontSize: 13,
     fontWeight: '600',
-    color: '#333E3C',
-  },
-  cardSub: {
-    fontSize: 12,
-    color: '#8A9A96',
-    marginTop: 2,
-  },
-  infoCard: {
-    flexDirection: 'row',
-    backgroundColor: '#E6F4EA',
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
-    gap: 12,
-  },
-  infoTexto: {
-    flex: 1,
-    fontSize: 12,
+
     color: '#0E766D',
-    lineHeight: 18,
   },
+
+  medicacaoConteudo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+  medicacaoInfo: {
+    flex: 1,
+
+    paddingRight: 10,
+  },
+
+  medicacaoNome: {
+    fontSize: 15,
+    fontWeight: '700',
+
+    color: '#273331',
+  },
+
+  medicacaoDose: {
+    marginTop: 4,
+
+    fontSize: 12,
+
+    color: '#6F7C79',
+  },
+
+  botaoTomar: {
+    backgroundColor: '#0E8F83',
+
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+
+    borderRadius: 18,
+  },
+
+  botaoTomarTexto: {
+    color: '#FFFFFF',
+
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+
+  // =========================================================
+  // DICA DE SAÚDE
+  // =========================================================
+
+  dicaCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+
+    backgroundColor: '#FFFFFF',
+
+    borderRadius: 22,
+
+    padding: 18,
+
+    borderWidth: 1,
+    borderColor: '#E8EFED',
+
+    shadowColor: '#000000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+
+    elevation: 2,
+  },
+
+  dicaIcone: {
+    width: 48,
+    height: 48,
+
+    borderRadius: 14,
+
+    backgroundColor: '#FFE8ED',
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    marginRight: 14,
+  },
+
+  dicaConteudo: {
+    flex: 1,
+  },
+
+  dicaTitulo: {
+    marginBottom: 5,
+
+    fontSize: 13,
+    fontWeight: '700',
+
+    color: '#EF476F',
+  },
+
+  dicaTexto: {
+    fontSize: 14,
+
+    color: '#273331',
+
+    lineHeight: 20,
+  },
+
 });
