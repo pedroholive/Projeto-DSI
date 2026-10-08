@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-
+import { useRouter } from 'expo-router';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { auth, db } from '../../firebaseConfig';
 
 
 export default function HomeScreen() {
+  const router = useRouter();
   const [nomePaciente, setNomePaciente] = useState('Paciente');
   const [agora, setAgora] = useState(new Date());
 
@@ -237,6 +238,45 @@ export default function HomeScreen() {
             </View>
 
           </View>
+
+          {/* =====================================================
+    NOVO REGISTRO
+===================================================== */}
+
+<Pressable
+  style={styles.novoRegistroCard}
+  onPress={() => router.push('/novo-registro')}
+>
+  <View style={styles.novoRegistroIcone}>
+    <Ionicons
+      name="add"
+      size={24}
+      color="#0E9F8C"
+    />
+  </View>
+
+  <View style={styles.novoRegistroConteudo}>
+    <Text style={styles.novoRegistroTitulo}>
+      Novo registro
+    </Text>
+
+    <Text style={styles.novoRegistroDescricao}>
+      Registre uma nova medição de glicose ou pressão arterial.
+    </Text>
+  </View>
+
+  <View style={styles.novoRegistroBotao}>
+    <Text style={styles.novoRegistroBotaoTexto}>
+      Adicionar
+    </Text>
+
+    <Ionicons
+      name="chevron-forward"
+      size={17}
+      color="#FFFFFF"
+    />
+  </View>
+</Pressable>
 
 
           {/* =====================================================
@@ -793,5 +833,93 @@ const styles = StyleSheet.create({
 
     lineHeight: 20,
   },
+
+   // =========================================================
+// NOVO REGISTRO
+// =========================================================
+
+novoRegistroCard: {
+  flexDirection: 'row',
+  alignItems: 'center',
+
+  backgroundColor: '#FFFFFF',
+
+  borderRadius: 22,
+
+  padding: 16,
+
+  borderWidth: 1,
+  borderColor: '#E8EFED',
+
+  marginBottom: 14,
+
+  shadowColor: '#000000',
+  shadowOpacity: 0.04,
+  shadowRadius: 8,
+
+  shadowOffset: {
+    width: 0,
+    height: 3,
+  },
+
+  elevation: 2,
+},
+
+novoRegistroIcone: {
+  width: 48,
+  height: 48,
+
+  borderRadius: 15,
+
+  backgroundColor: '#E7F8F4',
+
+  alignItems: 'center',
+  justifyContent: 'center',
+
+  marginRight: 13,
+},
+
+novoRegistroConteudo: {
+  flex: 1,
+  paddingRight: 10,
+},
+
+novoRegistroTitulo: {
+  fontSize: 15,
+  fontWeight: '700',
+
+  color: '#273331',
+},
+
+novoRegistroDescricao: {
+  marginTop: 3,
+
+  fontSize: 12,
+
+  color: '#7E8D89',
+
+  lineHeight: 17,
+},
+
+novoRegistroBotao: {
+  flexDirection: 'row',
+  alignItems: 'center',
+
+  gap: 3,
+
+  backgroundColor: '#0E9F8C',
+
+  paddingHorizontal: 13,
+  paddingVertical: 9,
+
+  borderRadius: 18,
+},
+
+novoRegistroBotaoTexto: {
+  fontSize: 12,
+  fontWeight: '700',
+
+  color: '#FFFFFF',
+},
 
 });

@@ -8,6 +8,7 @@ export default function RootLayout() {
       <Stack.Screen name="cadastro" options={{ title: 'Criar Conta' }} />
       <Stack.Screen name="medico-home" options={{ headerShown: false }} />
       <Stack.Screen name="recuperar-senha" options={{ headerShown: false }} />
+      <Stack.Screen name="novo-registro" options={{ headerShown: false }}/>
     </Stack>
   );
 }
