@@ -1,8 +1,8 @@
+
 import React, { useCallback, useMemo, useState } from 'react';
 
 import {
   ActivityIndicator,
-  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,92 +16,363 @@ import { useFocusEffect, useRouter } from 'expo-router';
 
 import { auth } from '@/firebaseConfig';
 import {
-  Consulta,
+  type Consulta,
   listarConsultas,
 } from '@/services/consultaService';
+
+// Converte DD/MM/AAAA e HH:MM para uma data válida.
+function converterDataHora(
+  data: string,
+  horario: string
+): Date | null {
+  const partesData = data.trim().split('/');
+  const partesHorario = horario.trim().split(':');
+
+  if (
+    partesData.length !== 3 ||
+    partesHorario.length !== 2 ||
+    !/^\d{2}\/\d{2}\/\d{4}$/.test(data.trim()) ||
+    !/^\d{2}:\d{2}$/.test(horario.trim())
+  ) {
+    return null;
+  }
+
+  const [dia, mes, ano] = partesData.map(Number);
+  const [hora, minuto] = partesHorario.map(Number);
+
+  if (
+    ano < 1900 ||
+    mes < 1 ||
+    mes > 12 ||
+    dia < 1 ||
+    dia > 31 ||
+    hora < 0 ||
+    hora > 23 ||
+    minuto < 0 ||
+    minuto > 59
+  ) {
+    return null;
+  }
+
+  const resultado = new Date(
+    ano,
+    mes - 1,
+    dia,
+    hora,
+    minuto
+  );
+
+  if (
+    resultado.getFullYear() !== ano ||
+    resultado.getMonth() !== mes - 1 ||
+    resultado.getDate() !== dia ||
+    resultado.getHours() !== hora ||
+    resultado.getMinutes() !== minuto
+  ) {
+    return null;
+  }
+
+  return resultado;
+}
+
+// Gera os sete dias da semana atual.
+function gerarSemana(dataReferencia: Date) {
+  const inicio = new Date(dataReferencia);
+  const diaSemana = inicio.getDay();
+
+  // Segunda-feira como primeiro dia.
+  inicio.setDate(
+    inicio.getDate() - ((diaSemana + 6) % 7)
+  );
+
+  const nomes = [
+    'Dom',
+    'Seg',
+    'Ter',
+    'Qua',
+    'Qui',
+    'Sex',
+    'Sáb',
+  ];
+
+  return Array.from({ length: 7 }, (_, indice) => {
+    const data = new Date(inicio);
+    data.setDate(inicio.getDate() + indice);
+
+    return {
+      chave: `${data.getFullYear()}-${data.getMonth()}-${data.getDate()}`,
+      semana: nomes[data.getDay()],
+      dia: String(data.getDate()),
+      selecionado:
+        data.getDate() === dataReferencia.getDate() &&
+        data.getMonth() === dataReferencia.getMonth() &&
+        data.getFullYear() === dataReferencia.getFullYear(),
+    };
+  });
+}
+
+interface DiaCalendarioProps {
+  semana: string;
+  dia: string;
+  selecionado?: boolean;
+}
+
+function DiaCalendario({
+  semana,
+  dia,
+  selecionado = false,
+}: DiaCalendarioProps) {
+  return (
+    <View
+      style={[
+        styles.diaCalendario,
+        selecionado && styles.diaSelecionado,
+      ]}
+    >
+      <Text
+        style={[
+          styles.semanaTexto,
+          selecionado && styles.textoSelecionado,
+        ]}
+      >
+        {semana}
+      </Text>
+
+      <Text
+        style={[
+          styles.diaTexto,
+          selecionado && styles.textoSelecionado,
+        ]}
+      >
+        {dia}
+      </Text>
+    </View>
+  );
+}
+
+// Card reutilizado nas listas de consultas.
+function CardConsulta({
+  consulta,
+  anterior = false,
+  onPress,
+}: {
+  consulta: Consulta;
+  anterior?: boolean
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={styles.cardConsulta} onPress={onPress}>
+      <View
+        style={[
+          styles.cardConsultaIcone,
+          anterior && styles.iconeAnterior,
+        ]}
+      >
+        <Ionicons
+          name={anterior ? 'time-outline' : 'calendar-outline'}
+          size={22}
+          color={anterior ? '#667572' : '#0E766D'}
+        />
+      </View>
+
+      <View style={styles.cardConsultaConteudo}>
+        <Text style={styles.cardEspecialidade}>
+          {consulta.especialidade}
+        </Text>
+
+        <Text style={styles.cardMedico}>
+          {consulta.medico}
+        </Text>
+
+        <View style={styles.cardInformacao}>
+          <Ionicons
+            name="time-outline"
+            size={15}
+            color="#667572"
+          />
+
+          <Text style={styles.cardInformacaoTexto}>
+            {consulta.data} • {consulta.horario}
+          </Text>
+        </View>
+
+        <View style={styles.cardInformacao}>
+          <Ionicons
+            name="location-outline"
+            size={15}
+            color="#667572"
+          />
+
+          <Text style={styles.cardInformacaoTexto}>
+            {consulta.local}
+          </Text>
+        </View>
+
+        {consulta.observacao ? (
+          <View style={styles.cardInformacao}>
+            <Ionicons
+              name="document-text-outline"
+              size={15}
+              color="#667572"
+            />
+
+            <Text style={styles.cardInformacaoTexto}>
+              {consulta.observacao}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
 
 export default function ConsultasScreen() {
   const router = useRouter();
 
   const [consultas, setConsultas] = useState<Consulta[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState('');
+  const [agora, setAgora] = useState(() => new Date());
 
   // ---------------------------------------------------------
-  // CARREGAR CONSULTAS DO USUÁRIO
+  // ABRIR TELA DE EDIÇÃO
   // ---------------------------------------------------------
 
-  async function carregarConsultas() {
-    const usuario = auth.currentUser;
-
-    if (!usuario) {
-      setConsultas([]);
-      setCarregando(false);
+  function abrirEdicao(consulta: Consulta) {
+    if (!consulta.id) {
+      console.error('Não foi possível editar: consulta sem ID.');
       return;
     }
 
-    try {
-      setCarregando(true);
-
-      const dados = await listarConsultas(usuario.uid);
-
-      setConsultas(dados);
-    } catch (error) {
-      console.error('Erro ao carregar consultas:', error);
-    } finally {
-      setCarregando(false);
-    }
+    router.push({
+      pathname: '/consultas/editar',
+      params: {
+        id: consulta.id,
+      },
+    });
   }
 
-  // Atualiza a lista sempre que a tela volta a ficar em foco.
+  // ---------------------------------------------------------
+  // CARREGAR CONSULTAS DO FIREBASE
+  // ---------------------------------------------------------
+
   useFocusEffect(
     useCallback(() => {
+      let ativo = true;
+
+      async function carregarConsultas() {
+        if (ativo) {
+          setCarregando(true);
+          setErro('');
+          setAgora(new Date());
+        }
+
+        try {
+          const usuario = auth.currentUser;
+
+          if (!usuario) {
+            if (ativo) {
+              setConsultas([]);
+              setErro(
+                'Faça login para visualizar suas consultas.'
+              );
+            }
+            return;
+          }
+
+          const dados = await listarConsultas(usuario.uid);
+
+          if (ativo) {
+            setConsultas(dados);
+          }
+        } catch (error) {
+          console.error('Erro ao carregar consultas:', error);
+
+          if (ativo) {
+            setConsultas([]);
+            setErro(
+              'Não foi possível carregar suas consultas. Tente novamente.'
+            );
+          }
+        } finally {
+          if (ativo) {
+            setCarregando(false);
+          }
+        }
+      }
+
       carregarConsultas();
+
+      return () => {
+        ativo = false;
+      };
     }, [])
   );
 
   // ---------------------------------------------------------
-  // FUNÇÕES AUXILIARES
+  // CALENDÁRIO
   // ---------------------------------------------------------
 
-  function converterData(data: string) {
-    const partes = data.split('/');
+  const semanaAtual = useMemo(
+    () => gerarSemana(agora),
+    [agora]
+  );
 
-    if (partes.length !== 3) {
-      return new Date(0);
-    }
+  // ---------------------------------------------------------
+  // ORGANIZAR CONSULTAS POR DATA
+  // ---------------------------------------------------------
 
-    const dia = Number(partes[0]);
-    const mes = Number(partes[1]) - 1;
-    const ano = Number(partes[2]);
+  const {
+    proximaConsulta,
+    outrasConsultas,
+    consultasAnteriores,
+    consultasInvalidas,
+  } = useMemo(() => {
+    const futuras: Array<Consulta & { dataHora: Date }> = [];
+    const anteriores: Array<Consulta & { dataHora: Date }> = [];
+    const invalidas: Consulta[] = [];
 
-    return new Date(ano, mes, dia);
-  }
+    consultas.forEach((consulta) => {
+      const dataHora = converterDataHora(
+        consulta.data,
+        consulta.horario
+      );
 
-  // Ordena as consultas pela data.
-  const consultasOrdenadas = useMemo(() => {
-    return [...consultas].sort((a, b) => {
-      const dataA = converterData(a.data);
-      const dataB = converterData(b.data);
+      if (!dataHora) {
+        invalidas.push(consulta);
+        return;
+      }
 
-      return dataA.getTime() - dataB.getTime();
+      const consultaComData = {
+        ...consulta,
+        dataHora,
+      };
+
+      if (dataHora.getTime() >= agora.getTime()) {
+        futuras.push(consultaComData);
+      } else {
+        anteriores.push(consultaComData);
+      }
     });
-  }, [consultas]);
 
-  // Primeira consulta da lista ordenada.
-  const proximaConsulta =
-    consultasOrdenadas.length > 0
-      ? consultasOrdenadas[0]
-      : null;
+    futuras.sort(
+      (a, b) =>
+        a.dataHora.getTime() - b.dataHora.getTime()
+    );
 
-  // Todas as outras consultas.
-  const outrasConsultas =
-    consultasOrdenadas.length > 1
-      ? consultasOrdenadas.slice(1)
-      : [];
+    anteriores.sort(
+      (a, b) =>
+        b.dataHora.getTime() - a.dataHora.getTime()
+    );
 
-  // ---------------------------------------------------------
-  // INTERFACE
-  // ---------------------------------------------------------
+    return {
+      proximaConsulta: futuras[0] ?? null,
+      outrasConsultas: futuras.slice(1),
+      consultasAnteriores: anteriores,
+      consultasInvalidas: invalidas,
+    };
+  }, [consultas, agora]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -139,47 +410,20 @@ export default function ConsultasScreen() {
           </Pressable>
         </View>
 
-        {/* CALENDÁRIO */}
+        {/* CALENDÁRIO DINÂMICO */}
 
         <View style={styles.calendario}>
-          <DiaCalendario
-            semana="Qui"
-            dia="22"
-          />
-
-          <DiaCalendario
-            semana="Sex"
-            dia="23"
-          />
-
-          <DiaCalendario
-            semana="Sáb"
-            dia="24"
-          />
-
-          <DiaCalendario
-            semana="Dom"
-            dia="25"
-          />
-
-          <DiaCalendario
-            semana="Seg"
-            dia="26"
-            selecionado
-          />
-
-          <DiaCalendario
-            semana="Ter"
-            dia="27"
-          />
-
-          <DiaCalendario
-            semana="Qua"
-            dia="28"
-          />
+          {semanaAtual.map((dia) => (
+            <DiaCalendario
+              key={dia.chave}
+              semana={dia.semana}
+              dia={dia.dia}
+              selecionado={dia.selecionado}
+            />
+          ))}
         </View>
 
-        {/* CARREGANDO */}
+        {/* CARREGAMENTO */}
 
         {carregando ? (
           <View style={styles.carregando}>
@@ -190,6 +434,18 @@ export default function ConsultasScreen() {
 
             <Text style={styles.carregandoTexto}>
               Carregando consultas...
+            </Text>
+          </View>
+        ) : erro ? (
+          <View style={styles.estadoVazio}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={42}
+              color="#0E766D"
+            />
+
+            <Text style={styles.vazioDescricao}>
+              {erro}
             </Text>
           </View>
         ) : consultas.length === 0 ? (
@@ -209,8 +465,8 @@ export default function ConsultasScreen() {
             </Text>
 
             <Text style={styles.vazioDescricao}>
-              Adicione sua primeira consulta para acompanhar seus
-              compromissos.
+              Adicione sua primeira consulta para acompanhar
+              seus compromissos.
             </Text>
 
             <Pressable
@@ -236,15 +492,18 @@ export default function ConsultasScreen() {
               Próxima Consulta
             </Text>
 
-            {proximaConsulta && (
-              <View style={styles.cardPrincipal}>
-                <View style={styles.cardTopo}>
-                  <View style={styles.consultaStatus}>
-                    <Ionicons
-                      name="calendar-outline"
-                      size={19}
-                      color="#0E9F8C"
-                    />
+            {proximaConsulta ? (
+                <Pressable
+                  style={styles.cardPrincipal}
+                  onPress={() => abrirEdicao(proximaConsulta)}
+                >
+                  <View style={styles.cardTopo}>
+                    <View style={styles.consultaStatus}>
+                      <Ionicons
+                        name="calendar-outline"
+                        size={19}
+                        color="#0E9F8C"
+                      />
 
                     <Text style={styles.consultaStatusTexto}>
                       Próxima consulta
@@ -253,7 +512,7 @@ export default function ConsultasScreen() {
 
                   <View style={styles.statusBadge}>
                     <Text style={styles.statusBadgeTexto}>
-                      Confirmada
+                      Agendada
                     </Text>
                   </View>
                 </View>
@@ -311,10 +570,16 @@ export default function ConsultasScreen() {
                     </Text>
                   </View>
                 ) : null}
+              </Pressable>
+            ) : (
+              <View style={styles.cardPrincipal}>
+                <Text style={styles.vazioDescricao}>
+                  Você não possui consultas futuras cadastradas.
+                </Text>
               </View>
             )}
 
-            {/* OUTRAS CONSULTAS */}
+            {/* OUTRAS CONSULTAS FUTURAS */}
 
             {outrasConsultas.length > 0 && (
               <>
@@ -322,59 +587,55 @@ export default function ConsultasScreen() {
                   Outras Consultas
                 </Text>
 
-                {outrasConsultas.map((consulta) => (
-                  <View
-                    key={consulta.id}
-                    style={styles.cardConsulta}
-                  >
-                    <View style={styles.cardConsultaIcone}>
-                      <Ionicons
-                        name="calendar-outline"
-                        size={22}
-                        color="#0E766D"
-                      />
-                    </View>
+                {outrasConsultas.map((consulta, indice) => (
+                  <CardConsulta
+                    key={consulta.id ?? `anterior-${indice}`}
+                    consulta={consulta}
+                    anterior
+                    onPress={() => abrirEdicao(consulta)}
+                  />
+                ))}
+              </>
+            )}
 
-                    <View style={styles.cardConsultaConteudo}>
-                      <Text style={styles.cardEspecialidade}>
-                        {consulta.especialidade}
-                      </Text>
+            {/* CONSULTAS ANTERIORES */}
 
-                      <Text style={styles.cardMedico}>
-                        {consulta.medico}
-                      </Text>
+            {consultasAnteriores.length > 0 && (
+              <>
+                <Text style={styles.secaoTitulo}>
+                  Consultas Anteriores
+                </Text>
 
-                      <View style={styles.cardInformacao}>
-                        <Ionicons
-                          name="time-outline"
-                          size={15}
-                          color="#667572"
-                        />
+                {consultasAnteriores.map((consulta, indice) => (
+                  <CardConsulta
+                    key={consulta.id ?? `anterior-${indice}`}
+                    consulta={consulta}
+                    anterior
+                    onPress={() => abrirEdicao(consulta)}
+                  />
+                ))}
+              </>
+            )}
 
-                        <Text style={styles.cardInformacaoTexto}>
-                          {consulta.data} • {consulta.horario}
-                        </Text>
-                      </View>
+            {/* CONSULTAS COM DATA INVÁLIDA */}
 
-                      <View style={styles.cardInformacao}>
-                        <Ionicons
-                          name="location-outline"
-                          size={15}
-                          color="#667572"
-                        />
+            {consultasInvalidas.length > 0 && (
+              <>
+                <Text style={styles.secaoTitulo}>
+                  Consultas com data inválida
+                </Text>
 
-                        <Text style={styles.cardInformacaoTexto}>
-                          {consulta.local}
-                        </Text>
-                      </View>
-                    </View>
+                <Text style={styles.avisoTexto}>
+                  Confira a data e o horário destes registros.
+                </Text>
 
-                    <Ionicons
-                      name="chevron-forward"
-                      size={21}
-                      color="#A0AAA7"
-                    />
-                  </View>
+                {consultasInvalidas.map((consulta, indice) => (
+                  <CardConsulta
+                    key={consulta.id ?? `anterior-${indice}`}
+                    consulta={consulta}
+                    anterior
+                    onPress={() => abrirEdicao(consulta)}
+                  />
                 ))}
               </>
             )}
@@ -384,53 +645,6 @@ export default function ConsultasScreen() {
     </SafeAreaView>
   );
 }
-
-// ---------------------------------------------------------
-// COMPONENTE DO CALENDÁRIO
-// ---------------------------------------------------------
-
-interface DiaCalendarioProps {
-  semana: string;
-  dia: string;
-  selecionado?: boolean;
-}
-
-function DiaCalendario({
-  semana,
-  dia,
-  selecionado = false,
-}: DiaCalendarioProps) {
-  return (
-    <View
-      style={[
-        styles.diaCalendario,
-        selecionado && styles.diaSelecionado,
-      ]}
-    >
-      <Text
-        style={[
-          styles.semanaTexto,
-          selecionado && styles.textoSelecionado,
-        ]}
-      >
-        {semana}
-      </Text>
-
-      <Text
-        style={[
-          styles.diaTexto,
-          selecionado && styles.textoSelecionado,
-        ]}
-      >
-        {dia}
-      </Text>
-    </View>
-  );
-}
-
-// ---------------------------------------------------------
-// ESTILOS
-// ---------------------------------------------------------
 
 const styles = StyleSheet.create({
   container: {
@@ -487,7 +701,8 @@ const styles = StyleSheet.create({
   },
 
   diaCalendario: {
-    width: 43,
+    flex: 1,
+    maxWidth: 46,
     height: 61,
     borderRadius: 15,
     justifyContent: 'center',
@@ -523,6 +738,12 @@ const styles = StyleSheet.create({
     marginBottom: 13,
   },
 
+  avisoTexto: {
+    fontSize: 13,
+    color: '#667572',
+    marginBottom: 12,
+  },
+
   // CARD PRINCIPAL
 
   cardPrincipal: {
@@ -530,7 +751,6 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     padding: 18,
     marginBottom: 26,
-
     borderWidth: 1,
     borderColor: '#EDF1F0',
   },
@@ -638,7 +858,7 @@ const styles = StyleSheet.create({
     color: '#667572',
   },
 
-  // OUTRAS CONSULTAS
+  // CARDS DE CONSULTAS
 
   cardConsulta: {
     flexDirection: 'row',
@@ -647,7 +867,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 15,
     marginBottom: 11,
-
     borderWidth: 1,
     borderColor: '#EDF1F0',
   },
@@ -660,6 +879,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 13,
+  },
+
+  iconeAnterior: {
+    backgroundColor: '#EEF1F0',
   },
 
   cardConsultaConteudo: {
@@ -687,6 +910,7 @@ const styles = StyleSheet.create({
   },
 
   cardInformacaoTexto: {
+    flex: 1,
     fontSize: 12,
     color: '#667572',
   },
@@ -710,7 +934,7 @@ const styles = StyleSheet.create({
   estadoVazio: {
     alignItems: 'center',
     paddingTop: 60,
-    paddingHorizontal: 30,
+    paddingHorizontal: 20,
   },
 
   iconeVazio: {
@@ -727,6 +951,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#273331',
     marginTop: 17,
+    textAlign: 'center',
   },
 
   vazioDescricao: {
@@ -742,11 +967,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 13,
     backgroundColor: '#0E766D',
-
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-
     gap: 6,
     marginTop: 20,
   },
