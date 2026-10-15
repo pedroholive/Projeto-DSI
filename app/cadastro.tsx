@@ -1,42 +1,64 @@
-import React, { useState } from "react";
-import {
-  ScrollView, View, Text, TextInput, TouchableOpacity, StyleSheet, Image,
-} from "react-native";
-import { useRouter } from 'expo-router';
+import { useRouter } from "expo-router";
 import {
   createUserWithEmailAndPassword,
   deleteUser,
   updateProfile,
-} from 'firebase/auth';
+} from "firebase/auth";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import React, { useState } from "react";
 import {
-  doc,
-  serverTimestamp,
-  setDoc,
-} from 'firebase/firestore';
-import { auth, db } from '../firebaseConfig';
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { auth, db } from "../firebaseConfig";
 
 const C = {
-  bg: "#dde8e6", white: "#fff", teal: "#3d8b85",
-  dark: "#1a3d3a", gray: "#7a9a97", border: "#c8dedd",
-  light: "#e8f2f1", error: "#c0392b", success: "#2e8b57",
+  bg: "#dde8e6",
+  white: "#fff",
+  teal: "#3d8b85",
+  dark: "#1a3d3a",
+  gray: "#7a9a97",
+  border: "#c8dedd",
+  light: "#e8f2f1",
+  error: "#c0392b",
+  success: "#2e8b57",
 };
 
 type Profile = "patient" | "professional";
 
 type Form = {
-  name: string; dob: string; email: string; phone: string;
-  emergency: string; password: string; confirm: string;
+  name: string;
+  dob: string;
+  email: string;
+  phone: string;
+  emergency: string;
+  password: string;
+  confirm: string;
   specialty: string;
 };
 
 const initial: Form = {
-  name: "", dob: "", email: "", phone: "", emergency: "",
-  password: "", confirm: "", specialty: "",
+  name: "",
+  dob: "",
+  email: "",
+  phone: "",
+  emergency: "",
+  password: "",
+  confirm: "",
+  specialty: "",
 };
 
 const diabetes = [
-  "Diabetes Tipo 1", "Diabetes Tipo 2", "Diabetes Gestacional",
-  "Pré-diabetes", "Não sei informar",
+  "Diabetes Tipo 1",
+  "Diabetes Tipo 2",
+  "Diabetes Gestacional",
+  "Pré-diabetes",
+  "Não sei informar",
 ];
 
 const pressure = [
@@ -61,6 +83,17 @@ const phoneMask = (v: string) => {
   return `(${n.slice(0, 2)}) ${n.slice(2, 7)}-${n.slice(7)}`;
 };
 
+const validPhoneOk = (v: string) => {
+  const n = v.replace(/\D/g, "");
+
+  return (
+  n.length === 11 &&
+  n[0] !== "0" &&
+  n[2] === "9"&& 
+  !/^(\d)\1+$/.test(n)
+);
+};
+
 const dateMask = (v: string) => {
   const n = v.replace(/\D/g, "").slice(0, 8);
   if (n.length <= 2) return n;
@@ -73,12 +106,36 @@ const validBirthDate = (value: string) => {
 
   const [day, month, year] = value.split("/").map(Number);
 
-  if (year < 1900 || month < 1 || month > 12 || day < 1) return false;
+  if (
+    year < 1900 ||
+    year > new Date().getFullYear() ||
+    month < 1 ||
+    month > 12 ||
+    day < 1
+  )
+    return false;
 
   const daysInMonth = new Date(year, month, 0).getDate();
+  if (day > daysInMonth) return false;
 
-  return day <= daysInMonth;
+  const today = new Date();
+
+  const birth = new Date(year, month - 1, day);
+
+  if (birth > today) return false; 
+
+  let age = today.getFullYear() - year;
+
+  const todayMonth = today.getMonth() + 1;
+
+  const hadBirthday =
+    todayMonth > month || (todayMonth === month && today.getDate() >= day);
+  if (!hadBirthday) age--;
+  return age;
 };
+
+const validName = (v: string) =>
+  /^[A-Za-zÀ-ÖØ-öø-ÿ]+(\s[A-Za-zÀ-ÖØ-öø-ÿ]+)*$/.test(v.trim());
 
 export default function App() {
   const router = useRouter();
@@ -95,7 +152,7 @@ export default function App() {
   const [carregando, setCarregando] = useState(false);
 
   const set = (key: keyof Form, value: string) =>
-    setForm(f => ({ ...f, [key]: value }));
+    setForm((f) => ({ ...f, [key]: value }));
 
   const emailOK = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(form.email);
 
@@ -109,24 +166,59 @@ export default function App() {
   const submit = async () => {
     setError("");
 
-    const fields = profile === "patient"
-      ? [form.name, form.dob, form.email, form.phone, form.emergency,
-         form.password, form.confirm]
-      : [form.name, form.dob, form.email, form.phone, form.specialty,
-         form.password, form.confirm];
+    const fields =
+      profile === "patient"
+        ? [
+            form.name,
+            form.dob,
+            form.email,
+            form.phone,
+            form.emergency,
+            form.password,
+            form.confirm,
+          ]
+        : [
+            form.name,
+            form.dob,
+            form.email,
+            form.phone,
+            form.specialty,
+            form.password,
+            form.confirm,
+          ];
 
-    if (fields.some(v => !v.trim()))
+    if (fields.some((v) => !v.trim()))
       return setError("Preencha todos os campos.");
 
-    if (!emailOK)
-      return setError("Digite um e-mail com domínio válido.");
+    if (fields.some((v) => !v.trim()))
+      return setError("Preencha todos os campos.");
 
-    if (!validBirthDate(form.dob))
-      return setError("Digite uma data de nascimento válida, a partir de 01/01/1900.");
+    if (!validName(form.name))
+      return setError("Digite um nome válido, utilizando apenas letras.");
+
+    if (!emailOK) return setError("Digite um e-mail com domínio válido.");
+
+    if (!validPhoneOk(form.phone)) 
+      return setError("Digite um número válido.");
+
+    if (profile === "patient" && !validPhoneOk(form.emergency))
+      return setError("Telefone de emergência inválido");
+    
+    const age = validBirthDate(form.dob);
+
+    if (age === false)
+      return setError(
+        "Digite uma data de nascimento válida, a partir de 01/01/1900.",
+      );
+
+    if (profile === "professional" && age < 18)
+      return setError(
+        "É necessario ter 18 anos ou mais para realizar o cadastro como médico.",
+      );
 
     if (!passwordOK)
       return setError(
-        "A senha precisa ter 6+ caracteres, maiúscula, minúscula, número e caractere especial."
+        "A senha precisa ter 6+ caracteres, maiúscula, minúscula, número e caractere especial.",
       );
 
     if (form.password !== form.confirm)
@@ -145,7 +237,11 @@ export default function App() {
       if (hasMorbidity && conditions.includes("Diabetes") && !types["Diabetes"])
         return setError("Selecione uma opção para Diabetes.");
 
-      if (hasMorbidity && conditions.includes("Hipertensão") && !types["Hipertensão"])
+      if (
+        hasMorbidity &&
+        conditions.includes("Hipertensão") &&
+        !types["Hipertensão"]
+      )
         return setError("Selecione uma opção para Hipertensão.");
     }
 
@@ -155,7 +251,7 @@ export default function App() {
       const credencial = await createUserWithEmailAndPassword(
         auth,
         form.email.trim(),
-        form.password
+        form.password,
       );
 
       try {
@@ -173,33 +269,18 @@ export default function App() {
           verificado: false,
 
           especialidade:
-            profile === "professional"
-              ? form.specialty.trim()
-              : null,
+            profile === "professional" ? form.specialty.trim() : null,
 
-          telefoneEmergencia:
-            profile === "patient"
-              ? form.emergency
-              : null,
+          telefoneEmergencia: profile === "patient" ? form.emergency : null,
 
-          apresentaMorbidade:
-            profile === "patient"
-              ? hasMorbidity
-              : null,
+          apresentaMorbidade: profile === "patient" ? hasMorbidity : null,
 
-          condicoes:
-            profile === "patient" && hasMorbidity
-              ? conditions
-              : [],
+          condicoes: profile === "patient" && hasMorbidity ? conditions : [],
 
-          tiposCondicoes:
-            profile === "patient" && hasMorbidity
-              ? types
-              : {},
+          tiposCondicoes: profile === "patient" && hasMorbidity ? types : {},
 
           criadoEm: serverTimestamp(),
         });
-
       } catch (profileError) {
         // Evita deixar uma conta criada sem os dados do perfil.
         await deleteUser(credencial.user).catch(() => undefined);
@@ -207,33 +288,35 @@ export default function App() {
       }
 
       router.replace(profile === "professional" ? "/medico-home" : "/(tabs)");
-
     } catch (err: any) {
       switch (err.code) {
-        case 'auth/email-already-in-use':
-          setError('Já existe uma conta com esse e-mail.');
+        case "auth/email-already-in-use":
+          setError("Já existe uma conta com esse e-mail.");
           break;
 
-        case 'auth/invalid-email':
-          setError('E-mail inválido.');
+        case "auth/invalid-email":
+          setError("E-mail inválido.");
           break;
 
-        case 'auth/weak-password':
-          setError('Senha muito fraca. Escolha uma senha mais forte.');
+        case "auth/weak-password":
+          setError("Senha muito fraca. Escolha uma senha mais forte.");
           break;
 
-        case 'auth/network-request-failed':
-          setError('Sem conexão com a internet. Verifique sua rede e tente novamente.');
+        case "auth/network-request-failed":
+          setError(
+            "Sem conexão com a internet. Verifique sua rede e tente novamente.",
+          );
           break;
 
-        case 'auth/too-many-requests':
-          setError('Muitas tentativas seguidas. Aguarde um instante e tente novamente.');
+        case "auth/too-many-requests":
+          setError(
+            "Muitas tentativas seguidas. Aguarde um instante e tente novamente.",
+          );
           break;
 
         default:
-          setError('Não foi possível criar a conta. Tente novamente.');
+          setError("Não foi possível criar a conta. Tente novamente.");
       }
-
     } finally {
       setCarregando(false);
     }
@@ -264,7 +347,10 @@ export default function App() {
             Bem-vindo ao Health Sync!{"\n"}Seu perfil está pronto.
           </Text>
 
-          <Button text="Ir para o início" onPress={() => router.replace('/login')} />
+          <Button
+            text="Ir para o início"
+            onPress={() => router.replace("/login")}
+          />
         </View>
       </Page>
     );
@@ -330,7 +416,12 @@ export default function App() {
                 style={s.row}
                 onPress={() => set("specialty", item)}
               >
-                <View style={[s.smallRadio, form.specialty === item && s.radioActive]}>
+                <View
+                  style={[
+                    s.smallRadio,
+                    form.specialty === item && s.radioActive,
+                  ]}
+                >
                   {form.specialty === item && <View style={s.dot} />}
                 </View>
 
@@ -349,14 +440,14 @@ export default function App() {
           onChange={(v: string) => set("email", v)}
         />
 
-        {form.email.length > 0 && !emailOK &&
-          <Text style={s.fieldError}>Digite um e-mail válido.</Text>}
+        {form.email.length > 0 && !emailOK && (
+          <Text style={s.fieldError}>Digite um e-mail válido.</Text>
+        )}
       </Field>
 
       {profile === "patient" && (
         <Field label="Apresenta alguma morbidade?">
           <View style={s.box}>
-
             <TouchableOpacity
               style={s.row}
               onPress={() => {
@@ -365,7 +456,9 @@ export default function App() {
                 setTypes({});
               }}
             >
-              <View style={[s.smallRadio, hasMorbidity === true && s.radioActive]}>
+              <View
+                style={[s.smallRadio, hasMorbidity === true && s.radioActive]}
+              >
                 {hasMorbidity === true && <View style={s.dot} />}
               </View>
 
@@ -380,7 +473,9 @@ export default function App() {
                 setTypes({});
               }}
             >
-              <View style={[s.smallRadio, hasMorbidity === false && s.radioActive]}>
+              <View
+                style={[s.smallRadio, hasMorbidity === false && s.radioActive]}
+              >
                 {hasMorbidity === false && <View style={s.dot} />}
               </View>
 
@@ -391,27 +486,33 @@ export default function App() {
               <View style={s.options}>
                 {["Diabetes", "Hipertensão"].map((item: string) => (
                   <React.Fragment key={item}>
-
                     <TouchableOpacity
                       style={s.row}
                       onPress={() => {
-                        setConditions(prev => {
+                        setConditions((prev) => {
                           if (prev.includes(item)) {
-                            setTypes(prevTypes => {
+                            setTypes((prevTypes) => {
                               const next = { ...prevTypes };
                               delete next[item];
                               return next;
                             });
 
-                            return prev.filter(v => v !== item);
+                            return prev.filter((v) => v !== item);
                           }
 
                           return [...prev, item];
                         });
                       }}
                     >
-                      <View style={[s.check, conditions.includes(item) && s.checked]}>
-                        {conditions.includes(item) && <Text style={s.tick}>✓</Text>}
+                      <View
+                        style={[
+                          s.check,
+                          conditions.includes(item) && s.checked,
+                        ]}
+                      >
+                        {conditions.includes(item) && (
+                          <Text style={s.tick}>✓</Text>
+                        )}
                       </View>
 
                       <Text style={s.condition}>{item}</Text>
@@ -425,25 +526,28 @@ export default function App() {
                               key={v}
                               style={s.option}
                               onPress={() =>
-                                setTypes(prev => ({ ...prev, [item]: v }))
+                                setTypes((prev) => ({ ...prev, [item]: v }))
                               }
                             >
-                              <View style={[s.smallRadio, types[item] === v && s.radioActive]}>
+                              <View
+                                style={[
+                                  s.smallRadio,
+                                  types[item] === v && s.radioActive,
+                                ]}
+                              >
                                 {types[item] === v && <View style={s.dot} />}
                               </View>
 
                               <Text style={s.optionText}>{v}</Text>
                             </TouchableOpacity>
-                          )
+                          ),
                         )}
                       </View>
                     )}
-
                   </React.Fragment>
                 ))}
               </View>
             )}
-
           </View>
         </Field>
       )}
@@ -481,7 +585,10 @@ export default function App() {
           <Rule ok={/[A-Z]/.test(form.password)} text="Letra maiúscula" />
           <Rule ok={/[a-z]/.test(form.password)} text="Letra minúscula" />
           <Rule ok={/\d/.test(form.password)} text="Número" />
-          <Rule ok={/[^A-Za-z0-9]/.test(form.password)} text="Caractere especial" />
+          <Rule
+            ok={/[^A-Za-z0-9]/.test(form.password)}
+            text="Caractere especial"
+          />
         </View>
       </Field>
 
@@ -533,7 +640,7 @@ function Header({ text }: { text: string }) {
     <View style={s.header}>
       <View style={s.logo}>
         <Image
-          source={require('../assets/images/logo-healthsync.png')}
+          source={require("../assets/images/logo-healthsync.png")}
           style={s.logoImagem}
           resizeMode="contain"
         />
@@ -546,9 +653,15 @@ function Header({ text }: { text: string }) {
 }
 
 function ChoiceCard({
-  title, text, active, onPress,
+  title,
+  text,
+  active,
+  onPress,
 }: {
-  title: string; text: string; active: boolean; onPress: () => void;
+  title: string;
+  text: string;
+  active: boolean;
+  onPress: () => void;
 }) {
   return (
     <TouchableOpacity
@@ -568,9 +681,11 @@ function ChoiceCard({
 }
 
 function Field({
-  label, children,
+  label,
+  children,
 }: {
-  label: string; children: React.ReactNode;
+  label: string;
+  children: React.ReactNode;
 }) {
   return (
     <View style={s.field}>
@@ -581,7 +696,10 @@ function Field({
 }
 
 function Input({
-  value, placeholder, keyboard, onChange,
+  value,
+  placeholder,
+  keyboard,
+  onChange,
 }: {
   value: string;
   placeholder: string;
@@ -602,7 +720,10 @@ function Input({
 }
 
 function Password({
-  value, show, toggle, onChange,
+  value,
+  show,
+  toggle,
+  onChange,
 }: {
   value: string;
   show: boolean;
@@ -637,9 +758,13 @@ function Rule({ ok, text }: { ok: boolean; text: string }) {
 }
 
 function Button({
-  text, onPress, disabled = false,
+  text,
+  onPress,
+  disabled = false,
 }: {
-  text: string; onPress: () => void; disabled?: boolean;
+  text: string;
+  onPress: () => void;
+  disabled?: boolean;
 }) {
   return (
     <TouchableOpacity
@@ -662,9 +787,9 @@ const s = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 18,
-    backgroundColor: '#DCEAE7',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#DCEAE7",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   logoImagem: {
@@ -674,14 +799,14 @@ const s = StyleSheet.create({
 
   title: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: C.dark,
   },
 
   subtitle: {
     color: C.gray,
     fontSize: 13,
-    textAlign: 'center',
+    textAlign: "center",
   },
 
   card: {
@@ -712,14 +837,14 @@ const s = StyleSheet.create({
 
   radioActive: {
     borderColor: C.teal,
-    backgroundColor: C.white
+    backgroundColor: C.white,
   },
 
   dot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: C.teal
+    backgroundColor: C.teal,
   },
 
   button: {
@@ -731,7 +856,7 @@ const s = StyleSheet.create({
   },
 
   disabled: {
-    backgroundColor: "#b8d0ce"
+    backgroundColor: "#b8d0ce",
   },
 
   buttonText: { color: C.white, fontWeight: "600" },
@@ -744,7 +869,7 @@ const s = StyleSheet.create({
     color: C.dark,
     fontSize: 14,
     fontWeight: "500",
-    marginBottom: 6
+    marginBottom: 6,
   },
 
   input: {
@@ -844,7 +969,7 @@ const s = StyleSheet.create({
     flex: 1,
     color: C.gray,
     fontSize: 11,
-    lineHeight: 17
+    lineHeight: 17,
   },
 
   link: { color: C.teal, fontWeight: "600" },

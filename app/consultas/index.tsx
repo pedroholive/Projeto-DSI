@@ -1,5 +1,4 @@
-
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from "react";
 
 import {
   ActivityIndicator,
@@ -8,25 +7,19 @@ import {
   StyleSheet,
   Text,
   View,
-} from 'react-native';
+} from "react-native";
 
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect, useRouter } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { auth } from '@/firebaseConfig';
-import {
-  type Consulta,
-  listarConsultas,
-} from '@/services/consultaService';
+import { auth } from "@/firebaseConfig";
+import { type Consulta, listarConsultas } from "@/services/consultaService";
 
 // Converte DD/MM/AAAA e HH:MM para uma data válida.
-function converterDataHora(
-  data: string,
-  horario: string
-): Date | null {
-  const partesData = data.trim().split('/');
-  const partesHorario = horario.trim().split(':');
+function converterDataHora(data: string, horario: string): Date | null {
+  const partesData = data.trim().split("/");
+  const partesHorario = horario.trim().split(":");
 
   if (
     partesData.length !== 3 ||
@@ -54,13 +47,7 @@ function converterDataHora(
     return null;
   }
 
-  const resultado = new Date(
-    ano,
-    mes - 1,
-    dia,
-    hora,
-    minuto
-  );
+  const resultado = new Date(ano, mes - 1, dia, hora, minuto);
 
   if (
     resultado.getFullYear() !== ano ||
@@ -81,19 +68,9 @@ function gerarSemana(dataReferencia: Date) {
   const diaSemana = inicio.getDay();
 
   // Segunda-feira como primeiro dia.
-  inicio.setDate(
-    inicio.getDate() - ((diaSemana + 6) % 7)
-  );
+  inicio.setDate(inicio.getDate() - ((diaSemana + 6) % 7));
 
-  const nomes = [
-    'Dom',
-    'Seg',
-    'Ter',
-    'Qua',
-    'Qui',
-    'Sex',
-    'Sáb',
-  ];
+  const nomes = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
   return Array.from({ length: 7 }, (_, indice) => {
     const data = new Date(inicio);
@@ -123,27 +100,14 @@ function DiaCalendario({
   selecionado = false,
 }: DiaCalendarioProps) {
   return (
-    <View
-      style={[
-        styles.diaCalendario,
-        selecionado && styles.diaSelecionado,
-      ]}
-    >
+    <View style={[styles.diaCalendario, selecionado && styles.diaSelecionado]}>
       <Text
-        style={[
-          styles.semanaTexto,
-          selecionado && styles.textoSelecionado,
-        ]}
+        style={[styles.semanaTexto, selecionado && styles.textoSelecionado]}
       >
         {semana}
       </Text>
 
-      <Text
-        style={[
-          styles.diaTexto,
-          selecionado && styles.textoSelecionado,
-        ]}
-      >
+      <Text style={[styles.diaTexto, selecionado && styles.textoSelecionado]}>
         {dia}
       </Text>
     </View>
@@ -157,39 +121,28 @@ function CardConsulta({
   onPress,
 }: {
   consulta: Consulta;
-  anterior?: boolean
+  anterior?: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable style={styles.cardConsulta} onPress={onPress}>
       <View
-        style={[
-          styles.cardConsultaIcone,
-          anterior && styles.iconeAnterior,
-        ]}
+        style={[styles.cardConsultaIcone, anterior && styles.iconeAnterior]}
       >
         <Ionicons
-          name={anterior ? 'time-outline' : 'calendar-outline'}
+          name={anterior ? "time-outline" : "calendar-outline"}
           size={22}
-          color={anterior ? '#667572' : '#0E766D'}
+          color={anterior ? "#667572" : "#0E766D"}
         />
       </View>
 
       <View style={styles.cardConsultaConteudo}>
-        <Text style={styles.cardEspecialidade}>
-          {consulta.especialidade}
-        </Text>
+        <Text style={styles.cardEspecialidade}>{consulta.especialidade}</Text>
 
-        <Text style={styles.cardMedico}>
-          {consulta.medico}
-        </Text>
+        <Text style={styles.cardMedico}>{consulta.medico}</Text>
 
         <View style={styles.cardInformacao}>
-          <Ionicons
-            name="time-outline"
-            size={15}
-            color="#667572"
-          />
+          <Ionicons name="time-outline" size={15} color="#667572" />
 
           <Text style={styles.cardInformacaoTexto}>
             {consulta.data} • {consulta.horario}
@@ -197,24 +150,14 @@ function CardConsulta({
         </View>
 
         <View style={styles.cardInformacao}>
-          <Ionicons
-            name="location-outline"
-            size={15}
-            color="#667572"
-          />
+          <Ionicons name="location-outline" size={15} color="#667572" />
 
-          <Text style={styles.cardInformacaoTexto}>
-            {consulta.local}
-          </Text>
+          <Text style={styles.cardInformacaoTexto}>{consulta.local}</Text>
         </View>
 
         {consulta.observacao ? (
           <View style={styles.cardInformacao}>
-            <Ionicons
-              name="document-text-outline"
-              size={15}
-              color="#667572"
-            />
+            <Ionicons name="document-text-outline" size={15} color="#667572" />
 
             <Text style={styles.cardInformacaoTexto}>
               {consulta.observacao}
@@ -226,13 +169,12 @@ function CardConsulta({
   );
 }
 
-
 export default function ConsultasScreen() {
   const router = useRouter();
 
   const [consultas, setConsultas] = useState<Consulta[]>([]);
   const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState('');
+  const [erro, setErro] = useState("");
   const [agora, setAgora] = useState(() => new Date());
 
   // ---------------------------------------------------------
@@ -241,12 +183,12 @@ export default function ConsultasScreen() {
 
   function abrirEdicao(consulta: Consulta) {
     if (!consulta.id) {
-      console.error('Não foi possível editar: consulta sem ID.');
+      console.error("Não foi possível editar: consulta sem ID.");
       return;
     }
 
     router.push({
-      pathname: '/consultas/editar',
+      pathname: "/consultas/editar",
       params: {
         id: consulta.id,
       },
@@ -264,7 +206,7 @@ export default function ConsultasScreen() {
       async function carregarConsultas() {
         if (ativo) {
           setCarregando(true);
-          setErro('');
+          setErro("");
           setAgora(new Date());
         }
 
@@ -274,9 +216,7 @@ export default function ConsultasScreen() {
           if (!usuario) {
             if (ativo) {
               setConsultas([]);
-              setErro(
-                'Faça login para visualizar suas consultas.'
-              );
+              setErro("Faça login para visualizar suas consultas.");
             }
             return;
           }
@@ -287,12 +227,12 @@ export default function ConsultasScreen() {
             setConsultas(dados);
           }
         } catch (error) {
-          console.error('Erro ao carregar consultas:', error);
+          console.error("Erro ao carregar consultas:", error);
 
           if (ativo) {
             setConsultas([]);
             setErro(
-              'Não foi possível carregar suas consultas. Tente novamente.'
+              "Não foi possível carregar suas consultas. Tente novamente.",
             );
           }
         } finally {
@@ -307,17 +247,14 @@ export default function ConsultasScreen() {
       return () => {
         ativo = false;
       };
-    }, [])
+    }, []),
   );
 
   // ---------------------------------------------------------
   // CALENDÁRIO
   // ---------------------------------------------------------
 
-  const semanaAtual = useMemo(
-    () => gerarSemana(agora),
-    [agora]
-  );
+  const semanaAtual = useMemo(() => gerarSemana(agora), [agora]);
 
   // ---------------------------------------------------------
   // ORGANIZAR CONSULTAS POR DATA
@@ -334,10 +271,7 @@ export default function ConsultasScreen() {
     const invalidas: Consulta[] = [];
 
     consultas.forEach((consulta) => {
-      const dataHora = converterDataHora(
-        consulta.data,
-        consulta.horario
-      );
+      const dataHora = converterDataHora(consulta.data, consulta.horario);
 
       if (!dataHora) {
         invalidas.push(consulta);
@@ -356,15 +290,9 @@ export default function ConsultasScreen() {
       }
     });
 
-    futuras.sort(
-      (a, b) =>
-        a.dataHora.getTime() - b.dataHora.getTime()
-    );
+    futuras.sort((a, b) => a.dataHora.getTime() - b.dataHora.getTime());
 
-    anteriores.sort(
-      (a, b) =>
-        b.dataHora.getTime() - a.dataHora.getTime()
-    );
+    anteriores.sort((a, b) => b.dataHora.getTime() - a.dataHora.getTime());
 
     return {
       proximaConsulta: futuras[0] ?? null,
@@ -383,30 +311,17 @@ export default function ConsultasScreen() {
         {/* HEADER */}
 
         <View style={styles.header}>
-          <Pressable
-            style={styles.botaoVoltar}
-            onPress={() => router.back()}
-          >
-            <Ionicons
-              name="chevron-back"
-              size={26}
-              color="#273331"
-            />
+          <Pressable style={styles.botaoVoltar} onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={26} color="#273331" />
           </Pressable>
 
-          <Text style={styles.titulo}>
-            Consultas
-          </Text>
+          <Text style={styles.titulo}>Consultas</Text>
 
           <Pressable
             style={styles.botaoAdicionar}
-            onPress={() => router.push('/consultas/nova')}
+            onPress={() => router.push("/consultas/nova")}
           >
-            <Ionicons
-              name="add"
-              size={27}
-              color="#FFFFFF"
-            />
+            <Ionicons name="add" size={27} color="#FFFFFF" />
           </Pressable>
         </View>
 
@@ -427,83 +342,57 @@ export default function ConsultasScreen() {
 
         {carregando ? (
           <View style={styles.carregando}>
-            <ActivityIndicator
-              size="large"
-              color="#0E766D"
-            />
+            <ActivityIndicator size="large" color="#0E766D" />
 
-            <Text style={styles.carregandoTexto}>
-              Carregando consultas...
-            </Text>
+            <Text style={styles.carregandoTexto}>Carregando consultas...</Text>
           </View>
         ) : erro ? (
           <View style={styles.estadoVazio}>
-            <Ionicons
-              name="alert-circle-outline"
-              size={42}
-              color="#0E766D"
-            />
+            <Ionicons name="alert-circle-outline" size={42} color="#0E766D" />
 
-            <Text style={styles.vazioDescricao}>
-              {erro}
-            </Text>
+            <Text style={styles.vazioDescricao}>{erro}</Text>
           </View>
         ) : consultas.length === 0 ? (
           /* NENHUMA CONSULTA */
 
           <View style={styles.estadoVazio}>
             <View style={styles.iconeVazio}>
-              <Ionicons
-                name="calendar-outline"
-                size={38}
-                color="#0E766D"
-              />
+              <Ionicons name="calendar-outline" size={38} color="#0E766D" />
             </View>
 
-            <Text style={styles.vazioTitulo}>
-              Nenhuma consulta cadastrada
-            </Text>
+            <Text style={styles.vazioTitulo}>Nenhuma consulta cadastrada</Text>
 
             <Text style={styles.vazioDescricao}>
-              Adicione sua primeira consulta para acompanhar
-              seus compromissos.
+              Adicione sua primeira consulta para acompanhar seus compromissos.
             </Text>
 
             <Pressable
               style={styles.botaoNovaConsulta}
-              onPress={() => router.push('/consultas/nova')}
+              onPress={() => router.push("/consultas/nova")}
             >
-              <Ionicons
-                name="add"
-                size={20}
-                color="#FFFFFF"
-              />
+              <Ionicons name="add" size={20} color="#FFFFFF" />
 
-              <Text style={styles.botaoNovaConsultaTexto}>
-                Nova consulta
-              </Text>
+              <Text style={styles.botaoNovaConsultaTexto}>Nova consulta</Text>
             </Pressable>
           </View>
         ) : (
           <>
             {/* PRÓXIMA CONSULTA */}
 
-            <Text style={styles.secaoTitulo}>
-              Próxima Consulta
-            </Text>
+            <Text style={styles.secaoTitulo}>Próxima Consulta</Text>
 
             {proximaConsulta ? (
-                <Pressable
-                  style={styles.cardPrincipal}
-                  onPress={() => abrirEdicao(proximaConsulta)}
-                >
-                  <View style={styles.cardTopo}>
-                    <View style={styles.consultaStatus}>
-                      <Ionicons
-                        name="calendar-outline"
-                        size={19}
-                        color="#0E9F8C"
-                      />
+              <Pressable
+                style={styles.cardPrincipal}
+                onPress={() => abrirEdicao(proximaConsulta)}
+              >
+                <View style={styles.cardTopo}>
+                  <View style={styles.consultaStatus}>
+                    <Ionicons
+                      name="calendar-outline"
+                      size={19}
+                      color="#0E9F8C"
+                    />
 
                     <Text style={styles.consultaStatusTexto}>
                       Próxima consulta
@@ -511,19 +400,13 @@ export default function ConsultasScreen() {
                   </View>
 
                   <View style={styles.statusBadge}>
-                    <Text style={styles.statusBadgeTexto}>
-                      Agendada
-                    </Text>
+                    <Text style={styles.statusBadgeTexto}>Agendada</Text>
                   </View>
                 </View>
 
                 <View style={styles.medicoContainer}>
                   <View style={styles.medicoIcone}>
-                    <Ionicons
-                      name="person-outline"
-                      size={24}
-                      color="#0E766D"
-                    />
+                    <Ionicons name="person-outline" size={24} color="#0E766D" />
                   </View>
 
                   <View style={styles.medicoInformacoes}>
@@ -533,7 +416,7 @@ export default function ConsultasScreen() {
 
                     <Text style={styles.medicoDetalhes}>
                       {proximaConsulta.especialidade}
-                      {' • '}
+                      {" • "}
                       {proximaConsulta.local}
                     </Text>
                   </View>
@@ -543,15 +426,11 @@ export default function ConsultasScreen() {
 
                 <View style={styles.consultaRodape}>
                   <View style={styles.dataContainer}>
-                    <Ionicons
-                      name="time-outline"
-                      size={17}
-                      color="#667572"
-                    />
+                    <Ionicons name="time-outline" size={17} color="#667572" />
 
                     <Text style={styles.dataTexto}>
                       {proximaConsulta.data}
-                      {' • '}
+                      {" • "}
                       {proximaConsulta.horario}
                     </Text>
                   </View>
@@ -583,9 +462,7 @@ export default function ConsultasScreen() {
 
             {outrasConsultas.length > 0 && (
               <>
-                <Text style={styles.secaoTitulo}>
-                  Outras Consultas
-                </Text>
+                <Text style={styles.secaoTitulo}>Outras Consultas</Text>
 
                 {outrasConsultas.map((consulta, indice) => (
                   <CardConsulta
@@ -602,9 +479,7 @@ export default function ConsultasScreen() {
 
             {consultasAnteriores.length > 0 && (
               <>
-                <Text style={styles.secaoTitulo}>
-                  Consultas Anteriores
-                </Text>
+                <Text style={styles.secaoTitulo}>Consultas Anteriores</Text>
 
                 {consultasAnteriores.map((consulta, indice) => (
                   <CardConsulta
@@ -649,13 +524,13 @@ export default function ConsultasScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F4F6F7',
+    backgroundColor: "#F4F6F7",
   },
 
   scrollContent: {
-    width: '100%',
+    width: "100%",
     maxWidth: 520,
-    alignSelf: 'center',
+    alignSelf: "center",
     paddingHorizontal: 20,
     paddingBottom: 40,
   },
@@ -663,9 +538,9 @@ const styles = StyleSheet.create({
   // HEADER
 
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingTop: 10,
     paddingBottom: 25,
   },
@@ -673,30 +548,30 @@ const styles = StyleSheet.create({
   botaoVoltar: {
     width: 42,
     height: 42,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   titulo: {
     fontSize: 23,
-    fontWeight: '700',
-    color: '#273331',
+    fontWeight: "700",
+    color: "#273331",
   },
 
   botaoAdicionar: {
     width: 42,
     height: 42,
     borderRadius: 13,
-    backgroundColor: '#0E766D',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#0E766D",
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   // CALENDÁRIO
 
   calendario: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 30,
   },
 
@@ -705,76 +580,76 @@ const styles = StyleSheet.create({
     maxWidth: 46,
     height: 61,
     borderRadius: 15,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   diaSelecionado: {
-    backgroundColor: '#0E9F8C',
+    backgroundColor: "#0E9F8C",
   },
 
   semanaTexto: {
     fontSize: 12,
-    color: '#667572',
+    color: "#667572",
     marginBottom: 4,
   },
 
   diaTexto: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#273331',
+    fontWeight: "700",
+    color: "#273331",
   },
 
   textoSelecionado: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
 
   // SEÇÕES
 
   secaoTitulo: {
     fontSize: 17,
-    fontWeight: '700',
-    color: '#273331',
+    fontWeight: "700",
+    color: "#273331",
     marginBottom: 13,
   },
 
   avisoTexto: {
     fontSize: 13,
-    color: '#667572',
+    color: "#667572",
     marginBottom: 12,
   },
 
   // CARD PRINCIPAL
 
   cardPrincipal: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 22,
     padding: 18,
     marginBottom: 26,
     borderWidth: 1,
-    borderColor: '#EDF1F0',
+    borderColor: "#EDF1F0",
   },
 
   cardTopo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
 
   consultaStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 7,
   },
 
   consultaStatusTexto: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#0E9F8C',
+    fontWeight: "600",
+    color: "#0E9F8C",
   },
 
   statusBadge: {
-    backgroundColor: '#E8F8F4',
+    backgroundColor: "#E8F8F4",
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 12,
@@ -782,13 +657,13 @@ const styles = StyleSheet.create({
 
   statusBadgeTexto: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#0E766D',
+    fontWeight: "600",
+    color: "#0E766D",
   },
 
   medicoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 20,
   },
 
@@ -796,9 +671,9 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#DDF3EC',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#DDF3EC",
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
 
@@ -808,45 +683,45 @@ const styles = StyleSheet.create({
 
   medicoNome: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#273331',
+    fontWeight: "700",
+    color: "#273331",
   },
 
   medicoDetalhes: {
     fontSize: 13,
-    color: '#667572',
+    color: "#667572",
     marginTop: 3,
   },
 
   divisor: {
     height: 1,
-    backgroundColor: '#EDF1F0',
+    backgroundColor: "#EDF1F0",
     marginVertical: 16,
   },
 
   consultaRodape: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
 
   dataContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
   },
 
   dataTexto: {
     fontSize: 13,
-    color: '#667572',
+    color: "#667572",
   },
 
   observacao: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     gap: 7,
     marginTop: 13,
-    backgroundColor: '#F7FAF9',
+    backgroundColor: "#F7FAF9",
     borderRadius: 10,
     padding: 10,
   },
@@ -855,34 +730,34 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     lineHeight: 17,
-    color: '#667572',
+    color: "#667572",
   },
 
   // CARDS DE CONSULTAS
 
   cardConsulta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
     borderRadius: 18,
     padding: 15,
     marginBottom: 11,
     borderWidth: 1,
-    borderColor: '#EDF1F0',
+    borderColor: "#EDF1F0",
   },
 
   cardConsultaIcone: {
     width: 46,
     height: 46,
     borderRadius: 14,
-    backgroundColor: '#E8F8F4',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#E8F8F4",
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 13,
   },
 
   iconeAnterior: {
-    backgroundColor: '#EEF1F0',
+    backgroundColor: "#EEF1F0",
   },
 
   cardConsultaConteudo: {
@@ -891,20 +766,20 @@ const styles = StyleSheet.create({
 
   cardEspecialidade: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#273331',
+    fontWeight: "700",
+    color: "#273331",
   },
 
   cardMedico: {
     fontSize: 13,
-    color: '#667572',
+    color: "#667572",
     marginTop: 2,
     marginBottom: 7,
   },
 
   cardInformacao: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 5,
     marginTop: 3,
   },
@@ -912,27 +787,27 @@ const styles = StyleSheet.create({
   cardInformacaoTexto: {
     flex: 1,
     fontSize: 12,
-    color: '#667572',
+    color: "#667572",
   },
 
   // CARREGAMENTO
 
   carregando: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 100,
   },
 
   carregandoTexto: {
     marginTop: 10,
     fontSize: 14,
-    color: '#667572',
+    color: "#667572",
   },
 
   // ESTADO VAZIO
 
   estadoVazio: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingTop: 60,
     paddingHorizontal: 20,
   },
@@ -941,23 +816,23 @@ const styles = StyleSheet.create({
     width: 75,
     height: 75,
     borderRadius: 22,
-    backgroundColor: '#DDF3EC',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#DDF3EC",
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   vazioTitulo: {
     fontSize: 17,
-    fontWeight: '700',
-    color: '#273331',
+    fontWeight: "700",
+    color: "#273331",
     marginTop: 17,
-    textAlign: 'center',
+    textAlign: "center",
   },
 
   vazioDescricao: {
     fontSize: 14,
-    color: '#667572',
-    textAlign: 'center',
+    color: "#667572",
+    textAlign: "center",
     lineHeight: 20,
     marginTop: 7,
   },
@@ -966,17 +841,17 @@ const styles = StyleSheet.create({
     height: 47,
     paddingHorizontal: 18,
     borderRadius: 13,
-    backgroundColor: '#0E766D',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#0E766D",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     gap: 6,
     marginTop: 20,
   },
 
   botaoNovaConsultaTexto: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 });
