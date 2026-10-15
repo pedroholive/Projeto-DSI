@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Alert,
   Image,
+  Platform,
 } from 'react-native';
 
 import { signInWithEmailAndPassword } from 'firebase/auth';
@@ -21,53 +22,135 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [carregando, setCarregando] = useState(false);
-  const [mostrarSenha, setMostrarSenha] = useState(false); // Estado para o olho
+  const [mostrarSenha, setMostrarSenha] = useState(false);
+
   const router = useRouter();
 
-  async function handleLogin() {
-    if (!email || !senha) {
-      Alert.alert('Atenção', 'Preencha e-mail e senha.');
-      return;
+  // REALIZAR LOGIN
+  
+async function handleLogin() {
+  console.log('[LOGIN] Botão pressionado');
+
+  if (!email.trim() || !senha) {
+    const mensagem = 'Preencha e-mail e senha.';
+
+    if (Platform.OS === 'web') {
+      window.alert(mensagem);
+    } else {
+      Alert.alert('Atenção', mensagem);
     }
-    setCarregando(true);
-    try {
-     const credencial = await signInWithEmailAndPassword(
-  auth,
-  email.trim(),
-  senha
-);
 
-const perfilRef = doc(db, 'usuarios', credencial.user.uid);
-const perfilSnapshot = await getDoc(perfilRef);
+    return;
+  }
 
-const perfil = perfilSnapshot.exists()
-  ? perfilSnapshot.data()
-  : null;
+  setCarregando(true);
 
-if (perfil?.perfil === 'professional') {
-  router.replace('/medico-home');
-} else {
-  router.replace('/(tabs)');
+  let etapa = 'Autenticação';
+
+  // Limite de espera para identificar operações travadas.
+  function comTimeout<T>(
+    operacao: Promise<T>,
+    nome: string
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(
+          new Error(
+            `Tempo de espera excedido em: ${nome}`
+          )
+        );
+      }, 15000);
+
+      operacao.then(
+        (resultado) => {
+          clearTimeout(timeout);
+          resolve(resultado);
+        },
+        (erro) => {
+          clearTimeout(timeout);
+          reject(erro);
+        }
+      );
+    });
+  }
+
+  try {
+    console.log('[LOGIN] 1. Autenticando usuário...');
+
+    const credencial = await comTimeout(
+      signInWithEmailAndPassword(
+        auth,
+        email.trim(),
+        senha
+      ),
+      'Firebase Authentication'
+    );
+
+    console.log('[LOGIN] 2. Autenticação concluída');
+
+    etapa = 'Leitura do perfil';
+
+    console.log('[LOGIN] 3. Buscando perfil no Firestore...');
+
+    const perfilRef = doc(
+      db,
+      'usuarios',
+      credencial.user.uid
+    );
+
+    const perfilSnapshot = await comTimeout(
+      getDoc(perfilRef),
+      'Cloud Firestore'
+    );
+
+    console.log('[LOGIN] 4. Perfil consultado');
+    console.log(
+      '[LOGIN] Documento existe:',
+      perfilSnapshot.exists()
+    );
+
+    const perfil = perfilSnapshot.exists()
+      ? perfilSnapshot.data()
+      : null;
+
+    etapa = 'Navegação';
+
+    console.log(
+      '[LOGIN] 5. Tipo de perfil:',
+      perfil?.perfil
+    );
+
+    if (perfil?.perfil === 'professional') {
+      router.replace('/medico-home');
+    } else {
+      router.replace('/(tabs)');
+    }
+
+    console.log('[LOGIN] Navegação solicitada');
+
+  } catch (error: any) {
+    console.error('[LOGIN] ETAPA COM ERRO:', etapa);
+    console.error('[LOGIN] ERRO COMPLETO:', error);
+    console.error('[LOGIN] CÓDIGO:', error?.code);
+    console.error('[LOGIN] MENSAGEM:', error?.message);
+
+    const mensagem =
+      `Etapa: ${etapa}\n` +
+      `Código: ${error?.code ?? 'desconhecido'}\n` +
+      `Mensagem: ${error?.message ?? 'Erro desconhecido'}`;
+
+    if (Platform.OS === 'web') {
+      window.alert(mensagem);
+    } else {
+      Alert.alert('Erro ao entrar', mensagem);
+    }
+
+  } finally {
+    console.log('[LOGIN] Finalizando tentativa');
+    setCarregando(false);
+  }
 }
-    } catch (error: any) {
-      Alert.alert('Erro ao entrar', traduzErro(error.code));
-    } finally {
-      setCarregando(false);
-    }
-  }
 
-  function traduzErro(codigo: string): string {
-    switch (codigo) {
-      case 'auth/invalid-email':
-        return 'E-mail inválido.';
-      case 'auth/user-not-found':
-      case 'auth/wrong-password':
-      case 'auth/invalid-credential':
-        return 'E-mail ou senha incorretos.';
-      default:
-        return 'Não foi possível entrar. Tente novamente.';
-    }
-  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -151,7 +234,7 @@ if (perfil?.perfil === 'professional') {
 
     </SafeAreaView>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: { 

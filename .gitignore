@@ -19,3 +19,6 @@ expo-env.d.ts
 
 # Editor (opcional, remova se quiser compartilhar configs do VS Code)
 .vscode/
+
+functions/lib/
+.firebase/
