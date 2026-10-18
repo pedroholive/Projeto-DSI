@@ -2,8 +2,10 @@
 // Todas as telas devem importar 'auth' e 'db' DAQUI, em vez de configurar o Firebase de novo em cada arquivo.
 
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
+import { Platform } from 'react-native';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAWazI-JuYczG2VWKmuFabWeNMZRL9bHYc",
@@ -15,5 +17,19 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
+
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const functions = getFunctions(app, 'us-central1');
+
+const usarEmuladores = __DEV__ && Platform.OS === 'web';
+
+if (usarEmuladores) {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', {
+    disableWarnings: true,
+  });
+
+  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+
+  connectFunctionsEmulator(functions, '127.0.0.1', 5001);
+}

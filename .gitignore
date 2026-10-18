@@ -22,3 +22,6 @@ expo-env.d.ts
 
 functions/lib/
 .firebase/
+
+# Firebase Emulator
+*-debug.log

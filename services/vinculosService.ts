@@ -9,10 +9,8 @@ import {
   runTransaction,
   serverTimestamp,
 } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from "firebase/functions";
-import { app } from "@/firebaseConfig";
-
-import { auth, db } from '@/firebaseConfig';
+import { httpsCallable } from 'firebase/functions';
+import { auth, db, functions } from '@/firebaseConfig';
 
 export type StatusVinculo =
   | 'pendente'
@@ -270,8 +268,6 @@ export async function revogarVinculo(
 export async function solicitarVinculoPorCodigo(
   codigo: string
 ): Promise<string> {
-  const functions = getFunctions(app, "us-central1");
-
   const solicitar = httpsCallable<
     { codigo: string },
     { sucesso: boolean; vinculoId: string }
@@ -282,4 +278,20 @@ export async function solicitarVinculoPorCodigo(
   });
 
   return resultado.data.vinculoId;
+}
+
+export interface CodigoVinculoGerado {
+  codigo: string;
+  expiraEm: number;
+}
+
+export async function gerarCodigoVinculo(): Promise<CodigoVinculoGerado> {
+  const gerarCodigo = httpsCallable<
+    Record<string, never>,
+    CodigoVinculoGerado
+  >(functions, "gerarCodigoVinculo");
+
+  const resultado = await gerarCodigo({});
+
+  return resultado.data;
 }
