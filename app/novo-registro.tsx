@@ -12,7 +12,10 @@ import {
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams,} from 'expo-router';
+import {
+  useRouter,
+  useLocalSearchParams,
+} from 'expo-router';
 
 import {
   addDoc,
@@ -23,7 +26,11 @@ import {
 
 import { auth, db } from '../firebaseConfig';
 
-type TipoRegistro = 'glicose' | 'pressao';
+
+type TipoRegistro =
+  | 'glicose'
+  | 'pressao';
+
 
 function somenteNumeros(
   texto: string,
@@ -34,414 +41,678 @@ function somenteNumeros(
     .slice(0, maxDigitos);
 }
 
+
 export default function NovoRegistroScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{tipo?: string;}>();
+
+  const params =
+    useLocalSearchParams<{
+      tipo?: string;
+    }>();
+
 
   const [tipoRegistro, setTipoRegistro] =
-  useState<TipoRegistro>(
-    params.tipo === 'pressao'
-      ? 'pressao'
-      : 'glicose');
+    useState<TipoRegistro>(
+      params.tipo === 'pressao'
+        ? 'pressao'
+        : 'glicose'
+    );
 
-  const [salvando, setSalvando] = useState(false);
-  const [glicose, setGlicose] = useState('');
 
-  const [sistolica, setSistolica] = useState('');
-  const [diastolica, setDiastolica] = useState('');
+  const [salvando, setSalvando] =
+    useState(false);
 
-  const [momentoGlicose, setMomentoGlicose] =
-    useState<'jejum' | 'pos-prandial'>('jejum');
 
-  const [observacao, setObservacao] = useState('');
+  const [glicose, setGlicose] =
+    useState('');
+
+
+  const [sistolica, setSistolica] =
+    useState('');
+
+
+  const [diastolica, setDiastolica] =
+    useState('');
+
+
+  const [
+    momentoGlicose,
+    setMomentoGlicose,
+  ] =
+    useState<
+      'jejum' | 'pos-prandial'
+    >('jejum');
+
+
+  const [observacao, setObservacao] =
+    useState('');
+
 
   const agora = new Date();
 
-  const dataAtual = agora.toLocaleDateString('pt-BR');
 
-  const horaAtual = agora.toLocaleTimeString('pt-BR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-  async function handleSalvar() {
-
-  if (tipoRegistro === 'glicose') {
-  if (!glicose.trim()) {
-    Alert.alert(
-      'Atenção',
-      'Informe o valor da glicose.'
+  const dataAtual =
+    agora.toLocaleDateString(
+      'pt-BR'
     );
 
-    return;
-  }
 
-  const valorGlicose = Number(glicose);
-
-  if (
-    !Number.isInteger(valorGlicose) ||
-    valorGlicose < 20 ||
-    valorGlicose > 600
-  ) {
-    Alert.alert(
-      'Valor inválido',
-      'Informe um valor de glicose entre 20 e 600 mg/dL.'
-    );
-
-    return;
-  }
-
-  Alert.alert(
-    'Em desenvolvimento',
-    'O salvamento da glicose será implementado posteriormente.'
-  );
-
-  return;
-}
-
-
-  // Identifica o usuário atualmente logado.
-  const usuario = auth.currentUser;
-
-  if (!usuario) {
-    Alert.alert(
-      'Erro',
-      'Não foi possível identificar o usuário logado.'
-    );
-
-    return;
-  }
-
-
-  // Verifica se os campos foram preenchidos.
-  if (!sistolica.trim() || !diastolica.trim()) {
-    Alert.alert(
-      'Atenção',
-      'Informe os valores da pressão sistólica e diastólica.'
-    );
-
-    return;
-  }
-
-
-  const valorSistolica = Number(sistolica);
-  const valorDiastolica = Number(diastolica);
-  
-  // Tratamento de valores fora do intervalo esperado para pressão arterial.
-  if (
-  valorSistolica < 50 ||
-  valorSistolica > 300
-) {
-  Alert.alert(
-    'Valor inválido',
-    'A pressão sistólica deve estar entre 50 e 300 mmHg.'
-  );
-
-  return;
-}
-
-if (
-  valorDiastolica < 30 ||
-  valorDiastolica > 200
-) {
-  Alert.alert(
-    'Valor inválido',
-    'A pressão diastólica deve estar entre 30 e 200 mmHg.'
-  );
-
-  return;
-}
-
-if (valorSistolica <= valorDiastolica) {
-  Alert.alert(
-    'Valor inválido',
-    'A pressão sistólica deve ser maior que a diastólica.'
-  );
-
-  return;
-}
-
-  // Validação dos números.
-  if (
-    !Number.isFinite(valorSistolica) ||
-    !Number.isFinite(valorDiastolica) ||
-    valorSistolica <= 0 ||
-    valorDiastolica <= 0
-  ) {
-    Alert.alert(
-      'Atenção',
-      'Informe valores válidos para a pressão arterial.'
-    );
-
-    return;
-  }
-
-
-  // Não queremos salvar valores decimais de pressão.
-  if (
-    !Number.isInteger(valorSistolica) ||
-    !Number.isInteger(valorDiastolica)
-  ) {
-    Alert.alert(
-      'Atenção',
-      'Informe valores inteiros para a pressão arterial.'
-    );
-
-    return;
-  }
-
-
-  // Validação lógica básica.
-  if (valorSistolica <= valorDiastolica) {
-    Alert.alert(
-      'Atenção',
-      'A pressão sistólica deve ser maior que a diastólica.'
-    );
-
-    return;
-  }
-
-
-  try {
-
-    setSalvando(true);
-
-    const dataMedicao = new Date();
-
-
-    await addDoc(
-      collection(
-        db,
-        'usuarios',
-        usuario.uid,
-        'registrosPressao'
-      ),
+  const horaAtual =
+    agora.toLocaleTimeString(
+      'pt-BR',
       {
-        sistolica: valorSistolica,
-
-        diastolica: valorDiastolica,
-
-        unidade: 'mmHg',
-
-        observacao: observacao.trim(),
-
-        dataMedicao: Timestamp.fromDate(
-          dataMedicao
-        ),
-
-        criadoEm: serverTimestamp(),
+        hour: '2-digit',
+        minute: '2-digit',
       }
     );
 
 
-    // Limpa os campos.
-    setSistolica('');
-    setDiastolica('');
-    setObservacao('');
+  // =========================================================
+  // SALVAR
+  // =========================================================
+
+  async function handleSalvar() {
+
+    // ---------------------------------------------------------
+    // GLICOSE
+    // ---------------------------------------------------------
+
+    if (
+      tipoRegistro === 'glicose'
+    ) {
+
+      if (!glicose.trim()) {
+
+        Alert.alert(
+          'Atenção',
+          'Informe o valor da glicose.'
+        );
+
+        return;
+      }
 
 
-    Alert.alert(
-      'Registro salvo',
-      'A aferição de pressão arterial foi registrada com sucesso.'
-    );
+      const valorGlicose =
+        Number(glicose);
 
 
-    // Após salvar, volta para a tela de Pressão.
-    router.replace('/pressao');
+      if (
+        !Number.isInteger(
+          valorGlicose
+        ) ||
+        valorGlicose < 20 ||
+        valorGlicose > 600
+      ) {
+
+        Alert.alert(
+          'Valor inválido',
+          'Informe um valor de glicose entre 20 e 600 mg/dL.'
+        );
+
+        return;
+      }
 
 
-  } catch (error) {
+      /*
+        Por enquanto o salvamento de glicose
+        ainda não foi implementado.
+      */
 
-    console.error(
-      'Erro ao salvar pressão:',
-      error
-    );
+      Alert.alert(
+        'Em desenvolvimento',
+        'O salvamento da glicose será implementado posteriormente.'
+      );
+
+      return;
+    }
 
 
-    Alert.alert(
-      'Erro',
-      'Não foi possível salvar a aferição. Tente novamente.'
-    );
+    // ---------------------------------------------------------
+    // PRESSÃO
+    // ---------------------------------------------------------
+
+    const usuario =
+      auth.currentUser;
 
 
-  } finally {
+    if (!usuario) {
 
-    setSalvando(false);
+      Alert.alert(
+        'Erro',
+        'Não foi possível identificar o usuário logado.'
+      );
 
+      return;
+    }
+
+
+    if (
+      !sistolica.trim() ||
+      !diastolica.trim()
+    ) {
+
+      Alert.alert(
+        'Atenção',
+        'Informe os valores da pressão sistólica e diastólica.'
+      );
+
+      return;
+    }
+
+
+    const valorSistolica =
+      Number(sistolica);
+
+
+    const valorDiastolica =
+      Number(diastolica);
+
+
+    // ---------------------------------------------------------
+    // VALIDAÇÃO NUMÉRICA
+    // ---------------------------------------------------------
+
+    if (
+      !Number.isFinite(
+        valorSistolica
+      ) ||
+      !Number.isFinite(
+        valorDiastolica
+      )
+    ) {
+
+      Alert.alert(
+        'Atenção',
+        'Informe valores válidos para a pressão arterial.'
+      );
+
+      return;
+    }
+
+
+    if (
+      !Number.isInteger(
+        valorSistolica
+      ) ||
+      !Number.isInteger(
+        valorDiastolica
+      )
+    ) {
+
+      Alert.alert(
+        'Atenção',
+        'Informe valores inteiros para a pressão arterial.'
+      );
+
+      return;
+    }
+
+
+    // ---------------------------------------------------------
+    // LIMITES
+    // ---------------------------------------------------------
+
+    if (
+      valorSistolica < 50 ||
+      valorSistolica > 300
+    ) {
+
+      Alert.alert(
+        'Valor inválido',
+        'A pressão sistólica deve estar entre 50 e 300 mmHg.'
+      );
+
+      return;
+    }
+
+
+    if (
+      valorDiastolica < 30 ||
+      valorDiastolica > 200
+    ) {
+
+      Alert.alert(
+        'Valor inválido',
+        'A pressão diastólica deve estar entre 30 e 200 mmHg.'
+      );
+
+      return;
+    }
+
+
+    if (
+      valorSistolica <=
+      valorDiastolica
+    ) {
+
+      Alert.alert(
+        'Valor inválido',
+        'A pressão sistólica deve ser maior que a diastólica.'
+      );
+
+      return;
+    }
+
+
+    // ---------------------------------------------------------
+    // FIREBASE
+    // ---------------------------------------------------------
+
+    try {
+
+      setSalvando(true);
+
+
+      console.log(
+        '[PRESSAO] usuário:',
+        usuario.uid
+      );
+
+
+      const dataMedicao =
+        new Date();
+
+
+      console.log(
+        '[PRESSAO] iniciando addDoc'
+      );
+
+
+      const documentoCriado =
+        await addDoc(
+
+          collection(
+            db,
+            'usuarios',
+            usuario.uid,
+            'registrosPressao'
+          ),
+
+          {
+            sistolica:
+              valorSistolica,
+
+            diastolica:
+              valorDiastolica,
+
+            unidade:
+              'mmHg',
+
+            observacao:
+              observacao.trim(),
+
+            dataMedicao:
+              Timestamp.fromDate(
+                dataMedicao
+              ),
+
+            criadoEm:
+              serverTimestamp(),
+          }
+        );
+
+
+      console.log(
+        '[PRESSAO] documento criado:',
+        documentoCriado.id
+      );
+
+
+      // Limpa os campos.
+
+      setSistolica('');
+
+      setDiastolica('');
+
+      setObservacao('');
+
+
+      Alert.alert(
+        'Registro salvo',
+        'A aferição de pressão arterial foi registrada com sucesso.'
+      );
+
+
+      router.replace(
+        '/pressao'
+      );
+
+
+    } catch (error: any) {
+
+      console.error(
+        '[PRESSAO] ERRO:',
+        error?.code,
+        error?.message,
+        error
+      );
+
+
+      Alert.alert(
+        'Erro',
+        `Não foi possível salvar a aferição.\n${
+          error?.code ??
+          'Erro desconhecido'
+        }`
+      );
+
+
+    } finally {
+
+      console.log(
+        '[PRESSAO] finalizando salvamento'
+      );
+
+
+      setSalvando(false);
+    }
   }
-}
 
-  
+
+  // =========================================================
+  // INTERFACE
+  // =========================================================
 
   return (
-    <SafeAreaView style={styles.container}>
+
+    <SafeAreaView
+      style={styles.container}
+    >
+
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={
+          styles.scrollContent
+        }
+
+        showsVerticalScrollIndicator={
+          false
+        }
       >
+
         <View style={styles.content}>
 
-          {/* CABEÇALHO */}
+
+          {/* ===================================================
+              CABEÇALHO
+          =================================================== */}
 
           <View style={styles.header}>
+
             <Text style={styles.titulo}>
               Novo Registro
             </Text>
 
+
             <Pressable
-              style={styles.fecharButton}
-              onPress={() => router.back()}
+              style={
+                styles.fecharButton
+              }
+
+              onPress={() =>
+                router.back()
+              }
             >
+
               <Ionicons
                 name="close"
                 size={22}
                 color="#273331"
               />
+
             </Pressable>
+
           </View>
 
 
-          {/* TIPO DE REGISTRO */}
+          {/* ===================================================
+              TIPO DE REGISTRO
+          =================================================== */}
 
-          <View style={styles.tipoContainer}>
+          <View
+            style={
+              styles.tipoContainer
+            }
+          >
+
+            {/* GLICOSE */}
+
             <Pressable
               style={[
                 styles.tipoButton,
-                tipoRegistro === 'glicose' &&
+
+                tipoRegistro ===
+                  'glicose' &&
                   styles.tipoButtonAtivo,
               ]}
+
               onPress={() =>
-                setTipoRegistro('glicose')
+                setTipoRegistro(
+                  'glicose'
+                )
               }
             >
+
               <Ionicons
                 name="water"
                 size={15}
+
                 color={
-                  tipoRegistro === 'glicose'
+                  tipoRegistro ===
+                  'glicose'
                     ? '#0E9F8C'
                     : '#7E8D89'
                 }
               />
 
+
               <Text
                 style={[
                   styles.tipoTexto,
-                  tipoRegistro === 'glicose' &&
+
+                  tipoRegistro ===
+                    'glicose' &&
                     styles.tipoTextoAtivo,
                 ]}
               >
+
                 Glicose
+
               </Text>
+
             </Pressable>
 
+
+            {/* PRESSÃO */}
 
             <Pressable
               style={[
                 styles.tipoButton,
-                tipoRegistro === 'pressao' &&
+
+                tipoRegistro ===
+                  'pressao' &&
                   styles.tipoButtonAtivo,
               ]}
+
               onPress={() =>
-                setTipoRegistro('pressao')
+                setTipoRegistro(
+                  'pressao'
+                )
               }
             >
+
               <Ionicons
                 name="heart"
                 size={15}
+
                 color={
-                  tipoRegistro === 'pressao'
+                  tipoRegistro ===
+                  'pressao'
                     ? '#0E9F8C'
                     : '#7E8D89'
                 }
               />
 
+
               <Text
                 style={[
                   styles.tipoTexto,
-                  tipoRegistro === 'pressao' &&
+
+                  tipoRegistro ===
+                    'pressao' &&
                     styles.tipoTextoAtivo,
                 ]}
               >
+
                 Pressão
+
               </Text>
+
             </Pressable>
+
           </View>
 
 
-          {/* FORMULÁRIO GLICOSE */}
+          {/* ===================================================
+              FORMULÁRIO GLICOSE
+          =================================================== */}
 
-          {tipoRegistro === 'glicose' && (
+          {tipoRegistro ===
+            'glicose' && (
+
             <>
+
               <View style={styles.card}>
-                <Text style={styles.cardLabel}>
+
+                <Text
+                  style={
+                    styles.cardLabel
+                  }
+                >
                   Digite o valor medido
                 </Text>
 
-                <View style={styles.valorContainer}>
-                  <TextInput
-                   value={glicose}
-                   onChangeText={(texto) =>
-                     setGlicose(somenteNumeros(texto, 3))
-                     }
-                      placeholder="112"
-                      placeholderTextColor="#B6C0BD"
-                      keyboardType="numeric"
-                      maxLength={3}
-                      style={styles.valorInput}
-/>
 
-                  <Text style={styles.unidade}>
+                <View
+                  style={
+                    styles.valorContainer
+                  }
+                >
+
+                  <TextInput
+                    value={glicose}
+
+                    onChangeText={(
+                      texto
+                    ) =>
+                      setGlicose(
+                        somenteNumeros(
+                          texto,
+                          3
+                        )
+                      )
+                    }
+
+                    placeholder="112"
+
+                    placeholderTextColor="#B6C0BD"
+
+                    keyboardType="numeric"
+
+                    maxLength={3}
+
+                    style={
+                      styles.valorInput
+                    }
+                  />
+
+
+                  <Text
+                    style={
+                      styles.unidade
+                    }
+                  >
                     mg/dL
                   </Text>
+
                 </View>
+
               </View>
 
 
+              {/* Momento da medição */}
+
               <View style={styles.card}>
-                <Text style={styles.secaoTitulo}>
+
+                <Text
+                  style={
+                    styles.secaoTitulo
+                  }
+                >
                   Momento da Medição
                 </Text>
 
-                <View style={styles.momentoRow}>
+
+                <View
+                  style={
+                    styles.momentoRow
+                  }
+                >
+
+                  {/* JEJUM */}
+
                   <Pressable
                     style={[
                       styles.momentoButton,
-                      momentoGlicose === 'jejum' &&
+
+                      momentoGlicose ===
+                        'jejum' &&
                         styles.momentoButtonAtivo,
                     ]}
+
                     onPress={() =>
-                      setMomentoGlicose('jejum')
+                      setMomentoGlicose(
+                        'jejum'
+                      )
                     }
                   >
+
                     <Text
                       style={[
                         styles.momentoTexto,
-                        momentoGlicose === 'jejum' &&
+
+                        momentoGlicose ===
+                          'jejum' &&
                           styles.momentoTextoAtivo,
                       ]}
                     >
                       Em jejum
                     </Text>
+
                   </Pressable>
 
+
+                  {/* PÓS-PRANDIAL */}
 
                   <Pressable
                     style={[
                       styles.momentoButton,
+
                       momentoGlicose ===
                         'pos-prandial' &&
                         styles.momentoButtonAtivo,
                     ]}
+
                     onPress={() =>
                       setMomentoGlicose(
                         'pos-prandial'
                       )
                     }
                   >
+
                     <Text
                       style={[
                         styles.momentoTexto,
+
                         momentoGlicose ===
                           'pos-prandial' &&
                           styles.momentoTextoAtivo,
@@ -449,184 +720,399 @@ if (valorSistolica <= valorDiastolica) {
                     >
                       Pós-Prandial
                     </Text>
+
                   </Pressable>
+
                 </View>
+
               </View>
+
             </>
+
           )}
 
 
-          {/* FORMULÁRIO PRESSÃO */}
+          {/* ===================================================
+              FORMULÁRIO PRESSÃO
+          =================================================== */}
 
-          {tipoRegistro === 'pressao' && (
+          {tipoRegistro ===
+            'pressao' && (
+
             <View style={styles.card}>
-              <Text style={styles.secaoTitulo}>
+
+              <Text
+                style={
+                  styles.secaoTitulo
+                }
+              >
                 Pressão Arterial
               </Text>
 
-              <Text style={styles.cardDescricao}>
-                Informe os valores da aferição.
+
+              <Text
+                style={
+                  styles.cardDescricao
+                }
+              >
+                Informe os valores da
+                aferição.
               </Text>
 
 
-              <View style={styles.pressaoRow}>
+              <View
+                style={
+                  styles.pressaoRow
+                }
+              >
 
-                <View style={styles.pressaoCampo}>
-                  <Text style={styles.campoLabel}>
+                {/* SISTÓLICA */}
+
+                <View
+                  style={
+                    styles.pressaoCampo
+                  }
+                >
+
+                  <Text
+                    style={
+                      styles.campoLabel
+                    }
+                  >
                     Sistólica
                   </Text>
 
-                  <View style={styles.inputComUnidade}>
-                    <TextInput
-                     value={sistolica}
-                      onChangeText={(texto) =>
-                      setSistolica(somenteNumeros(texto, 3))
-                       }
-                       placeholder="120"
-                       placeholderTextColor="#B6C0BD"
-                       keyboardType="numeric"
-                       maxLength={3}
-                      style={styles.pressaoInput}
-/>
 
-                    <Text style={styles.unidadePressao}>
+                  <View
+                    style={
+                      styles.inputComUnidade
+                    }
+                  >
+
+                    <TextInput
+                      value={sistolica}
+
+                      onChangeText={(
+                        texto
+                      ) =>
+                        setSistolica(
+                          somenteNumeros(
+                            texto,
+                            3
+                          )
+                        )
+                      }
+
+                      placeholder="120"
+
+                      placeholderTextColor="#B6C0BD"
+
+                      keyboardType="numeric"
+
+                      maxLength={3}
+
+                      style={
+                        styles.pressaoInput
+                      }
+                    />
+
+
+                    <Text
+                      style={
+                        styles.unidadePressao
+                      }
+                    >
                       mmHg
                     </Text>
+
                   </View>
+
                 </View>
 
 
-                <View style={styles.pressaoCampo}>
-                  <Text style={styles.campoLabel}>
+                {/* DIASTÓLICA */}
+
+                <View
+                  style={
+                    styles.pressaoCampo
+                  }
+                >
+
+                  <Text
+                    style={
+                      styles.campoLabel
+                    }
+                  >
                     Diastólica
                   </Text>
 
-                  <View style={styles.inputComUnidade}>
+
+                  <View
+                    style={
+                      styles.inputComUnidade
+                    }
+                  >
+
                     <TextInput
                       value={diastolica}
-                       onChangeText={(texto) =>
-                      setDiastolica(somenteNumeros(texto, 3))
-                       }
-                       placeholder="80"
-                       placeholderTextColor="#B6C0BD"
-                        keyboardType="numeric"
-                        maxLength={3}
-                        style={styles.pressaoInput}
-/>
 
-                    <Text style={styles.unidadePressao}>
+                      onChangeText={(
+                        texto
+                      ) =>
+                        setDiastolica(
+                          somenteNumeros(
+                            texto,
+                            3
+                          )
+                        )
+                      }
+
+                      placeholder="80"
+
+                      placeholderTextColor="#B6C0BD"
+
+                      keyboardType="numeric"
+
+                      maxLength={3}
+
+                      style={
+                        styles.pressaoInput
+                      }
+                    />
+
+
+                    <Text
+                      style={
+                        styles.unidadePressao
+                      }
+                    >
                       mmHg
                     </Text>
+
                   </View>
+
                 </View>
 
               </View>
+
             </View>
+
           )}
 
 
-          {/* DATA E HORÁRIO */}
+          {/* ===================================================
+              DATA E HORÁRIO
+          =================================================== */}
 
           <View style={styles.card}>
-            <Text style={styles.secaoTitulo}>
+
+            <Text
+              style={
+                styles.secaoTitulo
+              }
+            >
               Data e horário
             </Text>
 
-            <View style={styles.dataHoraRow}>
-              <View style={styles.dataHoraItem}>
+
+            <View
+              style={
+                styles.dataHoraRow
+              }
+            >
+
+              {/* DATA */}
+
+              <View
+                style={
+                  styles.dataHoraItem
+                }
+              >
+
                 <Ionicons
                   name="calendar-outline"
                   size={18}
                   color="#0E766D"
                 />
 
-                <Text style={styles.dataHoraTexto}>
+
+                <Text
+                  style={
+                    styles.dataHoraTexto
+                  }
+                >
                   {dataAtual}
                 </Text>
+
               </View>
 
-              <View style={styles.dataHoraItem}>
+
+              {/* HORÁRIO */}
+
+              <View
+                style={
+                  styles.dataHoraItem
+                }
+              >
+
                 <Ionicons
                   name="time-outline"
                   size={18}
                   color="#0E766D"
                 />
 
-                <Text style={styles.dataHoraTexto}>
+
+                <Text
+                  style={
+                    styles.dataHoraTexto
+                  }
+                >
                   {horaAtual}
                 </Text>
+
               </View>
+
             </View>
+
           </View>
 
 
-          {/* OBSERVAÇÃO */}
+          {/* ===================================================
+              OBSERVAÇÃO
+          =================================================== */}
 
           <View style={styles.card}>
-            <Text style={styles.secaoTitulo}>
+
+            <Text
+              style={
+                styles.secaoTitulo
+              }
+            >
+
               Anotações
-              <Text style={styles.opcional}>
+
+              <Text
+                style={
+                  styles.opcional
+                }
+              >
                 {' '} (Opcional)
               </Text>
+
             </Text>
+
 
             <TextInput
               value={observacao}
-              onChangeText={setObservacao}
+
+              onChangeText={
+                setObservacao
+              }
+
               placeholder="Adicione alguma observação sobre a medição..."
+
               placeholderTextColor="#9BA7A4"
+
               multiline
+
               textAlignVertical="top"
-              style={styles.observacaoInput}
+
+              style={
+                styles.observacaoInput
+              }
             />
+
           </View>
 
 
-          {/* SALVAR */}
+          {/* ===================================================
+              SALVAR
+          =================================================== */}
 
           <Pressable
-  style={[
-    styles.salvarButton,
-    salvando && styles.salvarButtonDesabilitado,  ]}
-    onPress={handleSalvar}
-    disabled={salvando}
->
-   <Text style={styles.salvarTexto}>
-    {salvando
-      ? 'Salvando...'
-      : 'Salvar Registro'}
-        </Text>
-        </Pressable>
+            style={[
+              styles.salvarButton,
 
-          {/* CANCELAR */}
+              salvando &&
+                styles.salvarButtonDesabilitado,
+            ]}
 
-          <Pressable
-            style={styles.cancelarButton}
-            onPress={() => router.back()}
+            onPress={
+              handleSalvar
+            }
+
+            disabled={
+              salvando
+            }
           >
-            <Text style={styles.cancelarTexto}>
-              Cancelar
+
+            <Text
+              style={
+                styles.salvarTexto
+              }
+            >
+
+              {salvando
+                ? 'Salvando...'
+                : 'Salvar Registro'}
+
             </Text>
+
           </Pressable>
 
+
+          {/* ===================================================
+              CANCELAR
+          =================================================== */}
+
+          <Pressable
+            style={
+              styles.cancelarButton
+            }
+
+            onPress={() =>
+              router.back()
+            }
+          >
+
+            <Text
+              style={
+                styles.cancelarTexto
+              }
+            >
+              Cancelar
+            </Text>
+
+          </Pressable>
+
+
         </View>
+
       </ScrollView>
+
     </SafeAreaView>
   );
 }
 
 
+
 const styles = StyleSheet.create({
+
+  // =========================================================
+  // ESTRUTURA
+  // =========================================================
 
   container: {
     flex: 1,
     backgroundColor: '#F4F6F7',
   },
 
+
   scrollContent: {
     flexGrow: 1,
     alignItems: 'center',
   },
+
 
   content: {
     width: '100%',
@@ -638,39 +1124,54 @@ const styles = StyleSheet.create({
   },
 
 
+  // =========================================================
   // CABEÇALHO
+  // =========================================================
 
   header: {
     flexDirection: 'row',
+
     alignItems: 'center',
-    justifyContent: 'space-between',
+
+    justifyContent:
+      'space-between',
 
     marginBottom: 14,
   },
 
+
   titulo: {
     fontSize: 20,
+
     fontWeight: '700',
+
     color: '#273331',
   },
 
+
   fecharButton: {
     width: 36,
+
     height: 36,
 
     borderRadius: 18,
 
     alignItems: 'center',
-    justifyContent: 'center',
+
+    justifyContent:
+      'center',
   },
 
 
-  // TIPO
+  // =========================================================
+  // TIPO DE REGISTRO
+  // =========================================================
 
   tipoContainer: {
     flexDirection: 'row',
 
-    backgroundColor: '#FFFFFF',
+    backgroundColor:
+      '#FFFFFF',
 
     borderRadius: 14,
 
@@ -679,40 +1180,54 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
+
   tipoButton: {
     flex: 1,
 
     height: 38,
 
     flexDirection: 'row',
+
     alignItems: 'center',
-    justifyContent: 'center',
+
+    justifyContent:
+      'center',
 
     gap: 6,
 
     borderRadius: 11,
   },
 
+
   tipoButtonAtivo: {
-    backgroundColor: '#E7F8F4',
+    backgroundColor:
+      '#E7F8F4',
   },
+
 
   tipoTexto: {
     fontSize: 13,
+
     color: '#7E8D89',
+
     fontWeight: '500',
   },
 
+
   tipoTextoAtivo: {
     color: '#0E766D',
+
     fontWeight: '700',
   },
 
 
+  // =========================================================
   // CARDS
+  // =========================================================
 
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor:
+      '#FFFFFF',
 
     borderRadius: 18,
 
@@ -721,8 +1236,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
 
     borderWidth: 1,
-    borderColor: '#EEF2F1',
+
+    borderColor:
+      '#EEF2F1',
   },
+
 
   cardLabel: {
     textAlign: 'center',
@@ -734,35 +1252,49 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
+
   cardDescricao: {
     fontSize: 12,
+
     color: '#7E8D89',
 
     marginTop: 3,
+
     marginBottom: 15,
   },
 
+
   secaoTitulo: {
     fontSize: 14,
+
     fontWeight: '700',
+
     color: '#35413F',
 
     marginBottom: 12,
   },
 
 
+  // =========================================================
   // GLICOSE
+  // =========================================================
 
   valorContainer: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'baseline',
+
+    justifyContent:
+      'center',
+
+    alignItems:
+      'baseline',
   },
+
 
   valorInput: {
     minWidth: 90,
 
     fontSize: 42,
+
     fontWeight: '700',
 
     color: '#0E9F8C',
@@ -772,48 +1304,67 @@ const styles = StyleSheet.create({
     padding: 0,
   },
 
+
   unidade: {
     color: '#7E8D89',
+
     fontSize: 12,
   },
 
+
   momentoRow: {
     flexDirection: 'row',
+
     gap: 8,
   },
+
 
   momentoButton: {
     flex: 1,
 
     paddingVertical: 10,
 
-    backgroundColor: '#F4F6F7',
+    backgroundColor:
+      '#F4F6F7',
 
     borderRadius: 18,
 
-    alignItems: 'center',
+    alignItems:
+      'center',
 
     borderWidth: 1,
-    borderColor: 'transparent',
+
+    borderColor:
+      'transparent',
   },
 
+
   momentoButtonAtivo: {
-    backgroundColor: '#E9F8F5',
-    borderColor: '#0E9F8C',
+    backgroundColor:
+      '#E9F8F5',
+
+    borderColor:
+      '#0E9F8C',
   },
+
 
   momentoTexto: {
     color: '#8B9693',
+
     fontSize: 12,
   },
 
+
   momentoTextoAtivo: {
     color: '#0E766D',
+
     fontWeight: '600',
   },
 
 
+  // =========================================================
   // PRESSÃO
+  // =========================================================
 
   pressaoRow: {
     flexDirection: 'row',
@@ -821,12 +1372,15 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
+
   pressaoCampo: {
     flex: 1,
   },
 
+
   campoLabel: {
     fontSize: 12,
+
     fontWeight: '600',
 
     color: '#62706D',
@@ -834,19 +1388,26 @@ const styles = StyleSheet.create({
     marginBottom: 7,
   },
 
+
   inputComUnidade: {
-    backgroundColor: '#F5F7F7',
+    backgroundColor:
+      '#F5F7F7',
 
     borderWidth: 1,
-    borderColor: '#E1E8E6',
+
+    borderColor:
+      '#E1E8E6',
 
     borderRadius: 13,
 
     paddingHorizontal: 10,
+
     paddingVertical: 10,
 
-    alignItems: 'center',
+    alignItems:
+      'center',
   },
+
 
   pressaoInput: {
     width: '100%',
@@ -854,6 +1415,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
 
     fontSize: 27,
+
     fontWeight: '700',
 
     color: '#273331',
@@ -861,15 +1423,19 @@ const styles = StyleSheet.create({
     padding: 0,
   },
 
+
   unidadePressao: {
     fontSize: 10,
+
     color: '#8A9693',
 
     marginTop: 2,
   },
 
 
-  // DATA/HORA
+  // =========================================================
+  // DATA E HORÁRIO
+  // =========================================================
 
   dataHoraRow: {
     flexDirection: 'row',
@@ -877,38 +1443,48 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
+
   dataHoraItem: {
     flex: 1,
 
     flexDirection: 'row',
+
     alignItems: 'center',
 
     gap: 7,
 
-    backgroundColor: '#F5F8F7',
+    backgroundColor:
+      '#F5F8F7',
 
     padding: 12,
 
     borderRadius: 12,
   },
 
+
   dataHoraTexto: {
     fontSize: 13,
+
     color: '#52615E',
   },
 
 
+  // =========================================================
   // OBSERVAÇÃO
+  // =========================================================
 
   opcional: {
     fontWeight: '400',
+
     color: '#8C9794',
   },
+
 
   observacaoInput: {
     minHeight: 90,
 
-    backgroundColor: '#F4F6F7',
+    backgroundColor:
+      '#F4F6F7',
 
     borderRadius: 12,
 
@@ -920,45 +1496,65 @@ const styles = StyleSheet.create({
   },
 
 
+  // =========================================================
   // BOTÕES
+  // =========================================================
 
-salvarButton: {
-  height: 52,
-  backgroundColor: '#0E9F8C',
-  borderRadius: 12,
-  alignItems: 'center',
-  justifyContent: 'center',
-  marginTop: 2,
-},
- 
-salvarButtonDesabilitado: {
-  opacity: 0.6,
-},
+  salvarButton: {
+    height: 52,
+
+    backgroundColor:
+      '#0E9F8C',
+
+    borderRadius: 12,
+
+    alignItems: 'center',
+
+    justifyContent:
+      'center',
+
+    marginTop: 2,
+  },
+
+
+  salvarButtonDesabilitado: {
+    opacity: 0.6,
+  },
+
 
   salvarTexto: {
     color: '#FFFFFF',
+
     fontSize: 14,
+
     fontWeight: '700',
   },
+
 
   cancelarButton: {
     height: 48,
 
     borderWidth: 1,
-    borderColor: '#87918F',
+
+    borderColor:
+      '#87918F',
 
     borderRadius: 12,
 
     alignItems: 'center',
-    justifyContent: 'center',
+
+    justifyContent:
+      'center',
 
     marginTop: 10,
   },
+
 
   cancelarTexto: {
     color: '#45514F',
 
     fontSize: 13,
+
     fontWeight: '600',
   },
 

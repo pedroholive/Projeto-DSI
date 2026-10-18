@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 
 import {
@@ -7,22 +7,50 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
+import { onAuthStateChanged } from 'firebase/auth';
+
+import {
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  Timestamp,
+} from 'firebase/firestore';
+
+import { auth, db } from '../../firebaseConfig';
+
+
+type RegistroPressao = {
+  id: string;
+  sistolica: number;
+  diastolica: number;
+  observacao: string;
+  dataMedicao: Timestamp | null;
+};
+
 
 export default function PressaoScreen() {
+  const router = useRouter();
+
+  const [historico, setHistorico] =
+    useState<RegistroPressao[]>([]);
+
+  const [carregando, setCarregando] =
+    useState(true);
+
 
   /*
-    Dados temporários apenas para montar a interface.
+    Gráfico ainda temporário.
 
-    Depois estes valores serão substituídos pelos
-    registros reais vindos do Firebase.
+    Depois vamos substituir esses dados pelos
+    registros reais do Firebase.
   */
-  
-  const router = useRouter();
   const dadosSemana = [
     { dia: 'Ter', sistolica: 126, diastolica: 82 },
     { dia: 'Qua', sistolica: 122, diastolica: 79 },
@@ -33,26 +61,124 @@ export default function PressaoScreen() {
     { dia: 'Seg', sistolica: 122, diastolica: 80 },
   ];
 
-  const historico = [
-    {
-      id: '1',
-      sistolica: 122,
-      diastolica: 80,
-      momento: 'Hoje • 07:15',
-    },
-    {
-      id: '2',
-      sistolica: 120,
-      diastolica: 78,
-      momento: 'Ontem • 19:40',
-    },
-    {
-      id: '3',
-      sistolica: 124,
-      diastolica: 81,
-      momento: '01/10 • 08:10',
-    },
-  ];
+
+  useEffect(() => {
+    let cancelarFirestore:
+      | (() => void)
+      | undefined;
+
+    const cancelarAuth = onAuthStateChanged(
+      auth,
+      (usuario) => {
+
+        if (cancelarFirestore) {
+          cancelarFirestore();
+          cancelarFirestore = undefined;
+        }
+
+        if (!usuario) {
+          setHistorico([]);
+          setCarregando(false);
+          return;
+        }
+
+        setCarregando(true);
+
+        const registrosRef = collection(
+          db,
+          'usuarios',
+          usuario.uid,
+          'registrosPressao'
+        );
+
+        const consulta = query(
+          registrosRef,
+          orderBy('dataMedicao', 'desc')
+        );
+
+        cancelarFirestore = onSnapshot(
+          consulta,
+
+          (snapshot) => {
+            const registros =
+              snapshot.docs.map((documento) => {
+                const dados = documento.data();
+
+                return {
+                  id: documento.id,
+
+                  sistolica:
+                    Number(dados.sistolica),
+
+                  diastolica:
+                    Number(dados.diastolica),
+
+                  observacao:
+                    dados.observacao ?? '',
+
+                  dataMedicao:
+                    dados.dataMedicao instanceof Timestamp
+                      ? dados.dataMedicao
+                      : null,
+                };
+              });
+
+            setHistorico(registros);
+            setCarregando(false);
+          },
+
+          (error) => {
+            console.error(
+              'Erro ao carregar aferições:',
+              error
+            );
+
+            setCarregando(false);
+          }
+        );
+      }
+    );
+
+    return () => {
+      cancelarFirestore?.();
+      cancelarAuth();
+    };
+  }, []);
+
+
+  function formatarMomento(
+    timestamp: Timestamp | null
+  ) {
+    if (!timestamp) {
+      return 'Data indisponível';
+    }
+
+    const data = timestamp.toDate();
+
+    const dataFormatada =
+      data.toLocaleDateString(
+        'pt-BR',
+        {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        }
+      );
+
+    const horaFormatada =
+      data.toLocaleTimeString(
+        'pt-BR',
+        {
+          hour: '2-digit',
+          minute: '2-digit',
+        }
+      );
+
+    return `${dataFormatada} • ${horaFormatada}`;
+  }
+
+
+  const ultimaMedicao = historico[0];
 
 
   return (
@@ -103,98 +229,134 @@ export default function PressaoScreen() {
               Última Medição
             </Text>
 
-            <View style={styles.ultimaMedicaoRow}>
 
-              <View style={styles.valorContainer}>
+            {carregando ? (
 
-                <Text style={styles.valorPrincipal}>
-                  122
-                </Text>
+              <ActivityIndicator
+                size="small"
+                color="#0E9F8C"
+                style={styles.loadingUltimaMedicao}
+              />
 
-                <Text style={styles.separador}>
-                  /
-                </Text>
+            ) : ultimaMedicao ? (
 
-                <Text style={styles.valorPrincipal}>
-                  80
-                </Text>
+              <>
 
-                <Text style={styles.unidade}>
-                  mmHg
-                </Text>
+                <View style={styles.ultimaMedicaoRow}>
 
-              </View>
+                  <View style={styles.valorContainer}>
 
-              <View style={styles.tagRegistro}>
-                <Text style={styles.tagRegistroTexto}>
-                  Recente
-                </Text>
-              </View>
+                    <Text style={styles.valorPrincipal}>
+                      {ultimaMedicao.sistolica}
+                    </Text>
 
+                    <Text style={styles.separador}>
+                      /
+                    </Text>
+
+                    <Text style={styles.valorPrincipal}>
+                      {ultimaMedicao.diastolica}
+                    </Text>
+
+                    <Text style={styles.unidade}>
+                      mmHg
+                    </Text>
+
+                  </View>
+
+
+                  <View style={styles.tagRegistro}>
+                    <Text style={styles.tagRegistroTexto}>
+                      Recente
+                    </Text>
+                  </View>
+
+                </View>
+
+
+                <View style={styles.medicaoInfo}>
+
+                  <Ionicons
+                    name="time-outline"
+                    size={15}
+                    color="#7E8D89"
+                  />
+
+                  <Text style={styles.medicaoInfoTexto}>
+                    {formatarMomento(
+                      ultimaMedicao.dataMedicao
+                    )}
+                  </Text>
+
+                </View>
+
+              </>
+
+            ) : (
+
+              <Text style={styles.semRegistros}>
+                Nenhuma aferição registrada ainda.
+              </Text>
+
+            )}
+
+          </View>
+
+
+          {/* =====================================================
+              REGISTRAR PRESSÃO
+          ===================================================== */}
+
+          <Pressable
+            style={styles.registrarCard}
+            onPress={() =>
+              router.push({
+                pathname: '/novo-registro',
+                params: {
+                  tipo: 'pressao',
+                },
+              })
+            }
+          >
+
+            <View style={styles.registrarIcone}>
+              <Ionicons
+                name="add"
+                size={22}
+                color="#0E9F8C"
+              />
             </View>
 
 
-            <View style={styles.medicaoInfo}>
+            <View style={styles.registrarConteudo}>
 
-              <Ionicons
-                name="time-outline"
-                size={15}
-                color="#7E8D89"
-              />
+              <Text style={styles.registrarTitulo}>
+                Registrar Pressão
+              </Text>
 
-              <Text style={styles.medicaoInfoTexto}>
-                Aferido hoje às 07:15
+              <Text style={styles.registrarDescricao}>
+                Adicione uma nova aferição rapidamente
               </Text>
 
             </View>
 
-          </View>
 
-{/* =====================================================
-    REGISTRAR PRESSÃO
-===================================================== */}
+            <View style={styles.registrarBotao}>
 
-<Pressable
-  style={styles.registrarCard}
-  onPress={() =>
-    router.push({
-      pathname: '/novo-registro',
-      params: {
-        tipo: 'pressao',
-      },
-    })
-  }
->
-  <View style={styles.registrarIcone}>
-    <Ionicons
-      name="add"
-      size={22}
-      color="#0E9F8C"
-    />
-  </View>
+              <Text style={styles.registrarBotaoTexto}>
+                Adicionar
+              </Text>
 
-  <View style={styles.registrarConteudo}>
-    <Text style={styles.registrarTitulo}>
-      Registrar Pressão
-    </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color="#FFFFFF"
+              />
 
-    <Text style={styles.registrarDescricao}>
-      Adicione uma nova aferição rapidamente
-    </Text>
-  </View>
+            </View>
 
-  <View style={styles.registrarBotao}>
-    <Text style={styles.registrarBotaoTexto}>
-      Adicionar
-    </Text>
+          </Pressable>
 
-    <Ionicons
-      name="chevron-forward"
-      size={16}
-      color="#FFFFFF"
-    />
-  </View>
-</Pressable>          
 
           {/* =====================================================
               TENDÊNCIA SEMANAL
@@ -212,6 +374,7 @@ export default function PressaoScreen() {
               <View style={styles.legenda}>
 
                 <View style={styles.legendaItem}>
+
                   <View
                     style={[
                       styles.legendaPonto,
@@ -222,10 +385,12 @@ export default function PressaoScreen() {
                   <Text style={styles.legendaTexto}>
                     Sist.
                   </Text>
+
                 </View>
 
 
                 <View style={styles.legendaItem}>
+
                   <View
                     style={[
                       styles.legendaPonto,
@@ -236,6 +401,7 @@ export default function PressaoScreen() {
                   <Text style={styles.legendaTexto}>
                     Diast.
                   </Text>
+
                 </View>
 
               </View>
@@ -243,8 +409,13 @@ export default function PressaoScreen() {
             </View>
 
 
-            {/* Representação simples da tendência.
-                Posteriormente podemos substituir por gráfico real. */}
+            {/*
+              Representação temporária.
+
+              Depois vamos substituir isso por
+              um gráfico real usando os registros
+              do Firebase.
+            */}
 
             <View style={styles.graficoContainer}>
 
@@ -287,6 +458,7 @@ export default function PressaoScreen() {
 
                   </View>
 
+
                   <Text style={styles.graficoDia}>
                     {item.dia}
                   </Text>
@@ -307,11 +479,13 @@ export default function PressaoScreen() {
           <View style={styles.resumoCard}>
 
             <View style={styles.resumoIcone}>
+
               <Ionicons
                 name="checkmark"
                 size={21}
                 color="#0E9F8C"
               />
+
             </View>
 
 
@@ -332,77 +506,122 @@ export default function PressaoScreen() {
           </View>
 
 
-          {/* =====================================================
-              HISTÓRICO
-          ===================================================== */}
+        {/* =====================================================
+    HISTÓRICO
+===================================================== */}
 
-          <Text style={styles.secaoTitulo}>
-            Aferições recentes
-          </Text>
+<Text style={styles.secaoTitulo}>
+  Aferições recentes
+</Text>
 
+<View style={styles.historicoCard}>
 
-          <View style={styles.historicoCard}>
+  {carregando ? (
 
-            {historico.map((item, index) => (
+    <ActivityIndicator
+      size="small"
+      color="#0E9F8C"
+      style={styles.loadingHistorico}
+    />
 
-              <View
-                key={item.id}
-                style={[
-                  styles.historicoItem,
+  ) : historico.length === 0 ? (
 
-                  index !== historico.length - 1 &&
-                    styles.historicoItemBorda,
-                ]}
-              >
+    <Text style={styles.historicoVazio}>
+      Você ainda não possui aferições registradas.
+    </Text>
 
-                <View style={styles.historicoIcone}>
-                  <Ionicons
-                    name="heart-outline"
-                    size={18}
-                    color="#0E9F8C"
-                  />
-                </View>
+  ) : (
 
+    historico.map((item, index) => (
 
-                <View style={styles.historicoConteudo}>
+      /*
+        Cada aferição agora é clicável.
 
-                  <View style={styles.historicoValorRow}>
+        Ao clicar, enviamos o ID daquele
+        registro para a tela editar-pressao.
+      */
+      <Pressable
+        key={item.id}
 
-                    <Text style={styles.historicoValor}>
-                      {item.sistolica}/{item.diastolica}
-                    </Text>
+        onPress={() =>
+          router.push({
+            pathname: '/editar-pressao',
 
-                    <Text style={styles.historicoUnidade}>
-                      mmHg
-                    </Text>
+            params: {
+              id: item.id,
+            },
+          })
+        }
 
-                  </View>
+        style={[
+          styles.historicoItem,
 
-                  <Text style={styles.historicoData}>
-                    {item.momento}
-                  </Text>
+          index !== historico.length - 1 &&
+            styles.historicoItemBorda,
+        ]}
+      >
 
-                </View>
+        {/* ÍCONE DA AFERIÇÃO */}
 
+        <View style={styles.historicoIcone}>
 
-                <Ionicons
-                  name="chevron-forward"
-                  size={18}
-                  color="#A0AAA7"
-                />
-
-              </View>
-
-            ))}
-
-          </View>
+          <Ionicons
+            name="heart-outline"
+            size={18}
+            color="#0E9F8C"
+          />
 
         </View>
 
-      </ScrollView>
 
-    </SafeAreaView>
-  );
+        {/* VALOR + DATA */}
+
+        <View style={styles.historicoConteudo}>
+
+          <View style={styles.historicoValorRow}>
+
+            <Text style={styles.historicoValor}>
+              {item.sistolica}/{item.diastolica}
+            </Text>
+
+            <Text style={styles.historicoUnidade}>
+              mmHg
+            </Text>
+
+          </View>
+
+
+          <Text style={styles.historicoData}>
+            {formatarMomento(
+              item.dataMedicao
+            )}
+          </Text>
+
+        </View>
+
+
+        {/* SETA PARA EDIÇÃO */}
+
+        <Ionicons
+          name="chevron-forward"
+          size={18}
+          color="#A0AAA7"
+        />
+
+      </Pressable>
+
+         ))
+
+    )}
+
+  </View>
+
+</View>
+
+</ScrollView>
+
+</SafeAreaView>
+);
 }
 
 
@@ -415,21 +634,16 @@ const styles = StyleSheet.create({
 
   container: {
     flex: 1,
-
     backgroundColor: '#F4F6F7',
   },
 
-
   scrollContent: {
     flexGrow: 1,
-
     alignItems: 'center',
   },
 
-
   content: {
     width: '100%',
-
     maxWidth: 520,
 
     paddingHorizontal: 20,
@@ -444,12 +658,9 @@ const styles = StyleSheet.create({
 
   header: {
     flexDirection: 'row',
-
     alignItems: 'center',
-
     marginBottom: 20,
   },
-
 
   headerIcon: {
     width: 48,
@@ -465,21 +676,15 @@ const styles = StyleSheet.create({
     marginRight: 13,
   },
 
-
   titulo: {
     fontSize: 24,
-
     fontWeight: '700',
-
     color: '#273331',
   },
 
-
   subtitulo: {
     marginTop: 3,
-
     fontSize: 13,
-
     color: '#7E8D89',
   },
 
@@ -496,15 +701,12 @@ const styles = StyleSheet.create({
     padding: 18,
 
     borderWidth: 1,
-
     borderColor: '#E8EFED',
 
     marginBottom: 14,
 
     shadowColor: '#000000',
-
     shadowOpacity: 0.04,
-
     shadowRadius: 8,
 
     shadowOffset: {
@@ -515,21 +717,15 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 
-
   cardLabel: {
     fontSize: 12,
-
     color: '#7E8D89',
-
     marginBottom: 8,
   },
 
-
   cardTitulo: {
     fontSize: 15,
-
     fontWeight: '700',
-
     color: '#273331',
   },
 
@@ -540,46 +736,32 @@ const styles = StyleSheet.create({
 
   ultimaMedicaoRow: {
     flexDirection: 'row',
-
     justifyContent: 'space-between',
-
     alignItems: 'center',
   },
 
-
   valorContainer: {
     flexDirection: 'row',
-
     alignItems: 'baseline',
   },
 
-
   valorPrincipal: {
     fontSize: 34,
-
     fontWeight: '700',
-
     color: '#273331',
   },
 
-
   separador: {
     fontSize: 28,
-
     color: '#7E8D89',
-
     marginHorizontal: 4,
   },
 
-
   unidade: {
     marginLeft: 6,
-
     fontSize: 11,
-
     color: '#7E8D89',
   },
-
 
   tagRegistro: {
     backgroundColor: '#E7F8F4',
@@ -590,19 +772,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
 
-
   tagRegistroTexto: {
     fontSize: 11,
-
     fontWeight: '600',
-
     color: '#0E9F8C',
   },
 
-
   medicaoInfo: {
     flexDirection: 'row',
-
     alignItems: 'center',
 
     gap: 5,
@@ -610,11 +787,102 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 
-
   medicaoInfoTexto: {
     fontSize: 12,
-
     color: '#7E8D89',
+  },
+
+  loadingUltimaMedicao: {
+    marginVertical: 16,
+  },
+
+  semRegistros: {
+    fontSize: 13,
+    color: '#8A9693',
+    paddingVertical: 14,
+  },
+
+
+  // =========================================================
+  // REGISTRAR PRESSÃO
+  // =========================================================
+
+  registrarCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+
+    backgroundColor: '#FFFFFF',
+
+    borderRadius: 18,
+
+    padding: 15,
+
+    borderWidth: 1,
+    borderColor: '#E8EFED',
+
+    marginBottom: 14,
+
+    shadowColor: '#000000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+
+    elevation: 2,
+  },
+
+  registrarIcone: {
+    width: 42,
+    height: 42,
+
+    borderRadius: 13,
+
+    backgroundColor: '#E7F8F4',
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    marginRight: 12,
+  },
+
+  registrarConteudo: {
+    flex: 1,
+    paddingRight: 8,
+  },
+
+  registrarTitulo: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#273331',
+  },
+
+  registrarDescricao: {
+    marginTop: 3,
+    fontSize: 11,
+    color: '#7E8D89',
+  },
+
+  registrarBotao: {
+    flexDirection: 'row',
+    alignItems: 'center',
+
+    gap: 3,
+
+    backgroundColor: '#0E9F8C',
+
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+
+    borderRadius: 17,
+  },
+
+  registrarBotaoTexto: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 
 
@@ -624,30 +892,23 @@ const styles = StyleSheet.create({
 
   tendenciaHeader: {
     flexDirection: 'row',
-
     justifyContent: 'space-between',
-
     alignItems: 'center',
 
     marginBottom: 20,
   },
 
-
   legenda: {
     flexDirection: 'row',
-
     gap: 10,
   },
 
-
   legendaItem: {
     flexDirection: 'row',
-
     alignItems: 'center',
 
     gap: 4,
   },
-
 
   legendaPonto: {
     width: 7,
@@ -656,23 +917,18 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
 
-
   pontoSistolica: {
     backgroundColor: '#EF476F',
   },
-
 
   pontoDiastolica: {
     backgroundColor: '#3B82F6',
   },
 
-
   legendaTexto: {
     fontSize: 10,
-
     color: '#7E8D89',
   },
-
 
   graficoContainer: {
     height: 110,
@@ -680,19 +936,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
 
     justifyContent: 'space-between',
-
     alignItems: 'flex-end',
   },
-
 
   graficoColuna: {
     flex: 1,
 
     alignItems: 'center',
-
     justifyContent: 'flex-end',
   },
-
 
   barrasContainer: {
     height: 82,
@@ -704,29 +956,22 @@ const styles = StyleSheet.create({
     gap: 3,
   },
 
-
   barra: {
     width: 6,
-
     borderRadius: 4,
   },
-
 
   barraSistolica: {
     backgroundColor: '#EF476F',
   },
 
-
   barraDiastolica: {
     backgroundColor: '#3B82F6',
   },
 
-
   graficoDia: {
     marginTop: 7,
-
     fontSize: 10,
-
     color: '#8A9693',
   },
 
@@ -737,7 +982,6 @@ const styles = StyleSheet.create({
 
   resumoCard: {
     flexDirection: 'row',
-
     alignItems: 'flex-start',
 
     backgroundColor: '#EAF8F5',
@@ -748,7 +992,6 @@ const styles = StyleSheet.create({
 
     marginBottom: 22,
   },
-
 
   resumoIcone: {
     width: 38,
@@ -764,22 +1007,18 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
 
-
   resumoConteudo: {
     flex: 1,
   },
 
-
   resumoTitulo: {
     fontSize: 13,
-
     fontWeight: '700',
 
     color: '#0E766D',
 
     marginBottom: 4,
   },
-
 
   resumoTexto: {
     fontSize: 12,
@@ -796,7 +1035,6 @@ const styles = StyleSheet.create({
 
   secaoTitulo: {
     fontSize: 15,
-
     fontWeight: '700',
 
     color: '#273331',
@@ -804,35 +1042,28 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-
   historicoCard: {
     backgroundColor: '#FFFFFF',
 
     borderRadius: 18,
 
     borderWidth: 1,
-
     borderColor: '#E8EFED',
 
     overflow: 'hidden',
   },
 
-
   historicoItem: {
     flexDirection: 'row',
-
     alignItems: 'center',
 
     padding: 15,
   },
 
-
   historicoItemBorda: {
     borderBottomWidth: 1,
-
     borderBottomColor: '#EEF2F1',
   },
-
 
   historicoIcone: {
     width: 38,
@@ -848,133 +1079,49 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
 
-
   historicoConteudo: {
     flex: 1,
   },
 
-
   historicoValorRow: {
     flexDirection: 'row',
-
     alignItems: 'baseline',
 
     gap: 4,
   },
 
-
   historicoValor: {
     fontSize: 15,
-
     fontWeight: '700',
 
     color: '#273331',
   },
 
-
   historicoUnidade: {
     fontSize: 10,
-
     color: '#8A9693',
   },
-
 
   historicoData: {
     marginTop: 3,
 
     fontSize: 11,
-
     color: '#8A9693',
   },
-  
-  // =========================================================
-// REGISTRAR PRESSÃO
-// =========================================================
 
-registrarCard: {
-  flexDirection: 'row',
-  alignItems: 'center',
+  historicoVazio: {
+    fontSize: 13,
 
-  backgroundColor: '#FFFFFF',
+    color: '#8A9693',
 
-  borderRadius: 18,
+    textAlign: 'center',
 
-  padding: 15,
-
-  borderWidth: 1,
-  borderColor: '#E8EFED',
-
-  marginBottom: 14,
-
-  shadowColor: '#000000',
-  shadowOpacity: 0.04,
-  shadowRadius: 8,
-
-  shadowOffset: {
-    width: 0,
-    height: 3,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
   },
 
-  elevation: 2,
-},
-
-registrarIcone: {
-  width: 42,
-  height: 42,
-
-  borderRadius: 13,
-
-  backgroundColor: '#E7F8F4',
-
-  alignItems: 'center',
-  justifyContent: 'center',
-
-  marginRight: 12,
-},
-
-registrarConteudo: {
-  flex: 1,
-
-  paddingRight: 8,
-},
-
-registrarTitulo: {
-  fontSize: 14,
-
-  fontWeight: '700',
-
-  color: '#273331',
-},
-
-registrarDescricao: {
-  marginTop: 3,
-
-  fontSize: 11,
-
-  color: '#7E8D89',
-},
-
-registrarBotao: {
-  flexDirection: 'row',
-
-  alignItems: 'center',
-
-  gap: 3,
-
-  backgroundColor: '#0E9F8C',
-
-  paddingHorizontal: 12,
-  paddingVertical: 9,
-
-  borderRadius: 17,
-},
-
-registrarBotaoTexto: {
-  fontSize: 11,
-
-  fontWeight: '700',
-
-  color: '#FFFFFF',
-},
+  loadingHistorico: {
+    marginVertical: 24,
+  },
 
 });
