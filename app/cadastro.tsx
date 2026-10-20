@@ -265,6 +265,8 @@ export default function App() {
           dataNascimento: form.dob,
           telefone: form.phone,
           perfil: profile,
+          
+          verificado: false,
 
           especialidade:
             profile === "professional" ? form.specialty.trim() : null,

@@ -109,9 +109,3 @@ export default function TabLayout() {
     </Tabs>
   );
 }
-<Tabs.Screen
-  name="explore"
-  options={{
-    href: null,
-  }}
-/>;

@@ -67,6 +67,34 @@ export default function MaisScreen() {
 
           <Ionicons name="chevron-forward" size={22} color="#7E8D89" />
         </Pressable>
+          <Pressable
+          style={[styles.opcao, { marginTop: 12 }]}
+          onPress={() => router.push('/meus-medicos')}
+        >
+          <View style={styles.iconeContainer}>
+            <Ionicons
+              name="medkit-outline"
+              size={23}
+              color="#0E766D"
+            />
+          </View>
+
+          <View style={styles.textos}>
+            <Text style={styles.opcaoTitulo}>
+              Meus médicos
+            </Text>
+
+            <Text style={styles.opcaoDescricao}>
+              Gerencie seus vínculos com profissionais de saúde
+            </Text>
+          </View>
+
+          <Ionicons
+            name="chevron-forward"
+            size={22}
+            color="#7E8D89"
+          />
+        </Pressable>
       </View>
     </SafeAreaView>
   );
