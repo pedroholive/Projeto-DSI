@@ -1,23 +1,44 @@
 
-import { httpsCallable } from "firebase/functions";
-import { functions } from "../firebaseConfig";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+} from 'firebase/firestore';
+
+import { auth, db } from '../firebaseConfig';
 
 export interface PacienteVinculado {
   id: string;
   nome: string;
 }
 
-interface RespostaPacientesVinculados {
-  pacientes: PacienteVinculado[];
-}
+export async function listarPacientesVinculados():
+  Promise<PacienteVinculado[]> {
+  const profissionalId = auth.currentUser?.uid;
 
-export async function listarPacientesVinculados(): Promise<PacienteVinculado[]> {
-  const chamada = httpsCallable<
-    void,
-    RespostaPacientesVinculados
-  >(functions, "listarPacientesVinculados");
+  if (!profissionalId) {
+    throw new Error('Usuário não autenticado.');
+  }
 
-  const resultado = await chamada();
+  const consulta = query(
+    collection(db, 'vinculos'),
+    where('profissionalId', '==', profissionalId),
+    where('status', '==', 'ativo')
+  );
 
-  return resultado.data.pacientes;
+  const resultado = await getDocs(consulta);
+
+  return resultado.docs.map((documento) => {
+    const dados = documento.data();
+
+    return {
+      id: dados.pacienteId as string,
+      nome:
+        typeof dados.nomePaciente === 'string' &&
+        dados.nomePaciente.trim()
+          ? dados.nomePaciente
+          : 'Paciente vinculado',
+    };
+  });
 }

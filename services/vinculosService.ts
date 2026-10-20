@@ -8,9 +8,17 @@ import {
   where,
   runTransaction,
   serverTimestamp,
+  Timestamp,
+  setDoc,
+  updateDoc,
 } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { auth, db, functions } from '@/firebaseConfig';
+
+import { auth, db } from '../firebaseConfig';
+
+import {
+  gerarTokenSeguro,
+  tokenTemFormatoValido,
+} from './conviteVinculoService';
 
 export type StatusVinculo =
   | 'pendente'
@@ -23,118 +31,219 @@ export interface Vinculo {
   profissionalId: string;
   pacienteId: string;
   status: StatusVinculo;
+  nomePaciente?: string;
 }
 
-// Inicialmente, somente médicos.
-// Futuramente, podemos incluir outras profissões.
-const PROFISSOES_PERMITIDAS = ['Médico'];
-
-function gerarIdVinculo(
-  profissionalId: string,
-  pacienteId: string
-): string {
-  return `${profissionalId}_${pacienteId}`;
+export interface CodigoVinculoGerado {
+  codigo: string;
+  expiraEm: number;
 }
 
-// Solicitar vínculo com paciente
-export async function solicitarVinculo(
-  pacienteId: string
-): Promise<void> {
-  const profissionalId = auth.currentUser?.uid;
+const DURACAO_CONVITE_MS = 10 * 60 * 1000;
 
-  if (!profissionalId) {
+function usuarioAutenticado(): string {
+  const uid = auth.currentUser?.uid;
+
+  if (!uid) {
     throw new Error('Usuário não autenticado.');
   }
 
-  if (!pacienteId || pacienteId === profissionalId) {
-    throw new Error('Paciente inválido.');
+  return uid;
+}
+
+async function obterNomePaciente(
+  pacienteId: string
+): Promise<string> {
+  const perfil = await getDoc(
+    doc(db, 'usuarios', pacienteId)
+  );
+
+  if (
+    !perfil.exists() ||
+    perfil.data().perfil !== 'patient'
+  ) {
+    throw new Error(
+      'Perfil de paciente não encontrado.'
+    );
   }
 
-  const profissionalRef = doc(
-    db,
-    'usuarios',
-    profissionalId
+  const nome = perfil.data().nome;
+
+  if (
+    typeof nome !== 'string' ||
+    !nome.trim()
+  ) {
+    throw new Error(
+      'O paciente precisa ter um nome cadastrado.'
+    );
+  }
+
+  return nome;
+}
+
+async function verificarMedico(
+  profissionalId: string
+): Promise<void> {
+  const perfil = await getDoc(
+    doc(db, 'usuarios', profissionalId)
   );
 
-  const pacienteRef = doc(
-    db,
-    'usuarios',
-    pacienteId
-  );
-
-  const [profissionalDoc, pacienteDoc] =
-    await Promise.all([
-      getDoc(profissionalRef),
-      getDoc(pacienteRef),
-    ]);
-
-  if (!profissionalDoc.exists()) {
+  if (!perfil.exists()) {
     throw new Error('Profissional não encontrado.');
   }
 
-  const profissional = profissionalDoc.data();
+  const dados = perfil.data();
 
   if (
-    profissional.perfil !== 'professional' ||
-    !PROFISSOES_PERMITIDAS.includes(
-      profissional.especialidade
-    ) ||
-    profissional.verificado !== true
+    dados.perfil !== 'professional' ||
+    dados.especialidade !== 'Médico' ||
+    dados.verificado !== true
   ) {
     throw new Error(
-      'Profissional não autorizado a solicitar vínculos.'
+      'Somente médicos verificados podem solicitar vínculos.'
     );
   }
+}
 
-  if (
-    !pacienteDoc.exists() ||
-    pacienteDoc.data().perfil !== 'patient'
-  ) {
-    throw new Error('Paciente não encontrado.');
-  }
+// PACIENTE: GERAR CONVITE
 
-  const vinculoId = gerarIdVinculo(
-    profissionalId,
-    pacienteId
+export async function gerarCodigoVinculo():
+  Promise<CodigoVinculoGerado> {
+  const pacienteId = usuarioAutenticado();
+
+  await obterNomePaciente(pacienteId);
+
+  const codigo = await gerarTokenSeguro();
+  const criadoEm = Timestamp.now();
+
+  const expiraEm = Timestamp.fromMillis(
+    criadoEm.toMillis() + DURACAO_CONVITE_MS
   );
 
-  const vinculoRef = doc(
+  await setDoc(
+    doc(db, 'codigosVinculo', codigo),
+    {
+      pacienteId,
+      status: 'disponivel',
+      criadoEm,
+      expiraEm,
+    }
+  );
+
+  return {
+    codigo,
+    expiraEm: expiraEm.toMillis(),
+  };
+}
+
+// MÉDICO: SOLICITAR VÍNCULO PELO CÓDIGO
+
+export async function solicitarVinculoPorCodigo(
+  codigo: string
+): Promise<string> {
+  const profissionalId = usuarioAutenticado();
+
+  await verificarMedico(profissionalId);
+
+  const token = codigo.trim().toLowerCase();
+
+  if (!tokenTemFormatoValido(token)) {
+    throw new Error('Código de convite inválido.');
+  }
+
+  const conviteRef = doc(
     db,
-    'vinculos',
-    vinculoId
+    'codigosVinculo',
+    token
   );
 
-  await runTransaction(db, async (transaction) => {
-    const vinculoDoc = await transaction.get(
-      vinculoRef
-    );
+  return runTransaction(db, async (transaction) => {
+    const conviteSnapshot =
+      await transaction.get(conviteRef);
 
-    if (vinculoDoc.exists()) {
+    if (!conviteSnapshot.exists()) {
       throw new Error(
-        'Já existe uma solicitação ou vínculo entre estes usuários.'
+        'Convite não encontrado ou inválido.'
       );
     }
 
-    transaction.set(vinculoRef, {
-      profissionalId,
-      pacienteId,
-      status: 'pendente',
-      criadoEm: serverTimestamp(),
-      atualizadoEm: serverTimestamp(),
+    const convite = conviteSnapshot.data();
+
+    if (convite.status !== 'disponivel') {
+      throw new Error(
+        'Este convite já foi utilizado.'
+      );
+    }
+
+    if (
+      !(convite.expiraEm instanceof Timestamp) ||
+      convite.expiraEm.toMillis() <= Date.now()
+    ) {
+      throw new Error(
+        'Este convite expirou. Solicite outro ao paciente.'
+      );
+    }
+
+    const pacienteId = convite.pacienteId;
+
+    if (
+      typeof pacienteId !== 'string' ||
+      pacienteId === profissionalId
+    ) {
+      throw new Error('Paciente inválido.');
+    }
+
+    const vinculoId =
+      `${profissionalId}_${pacienteId}`;
+
+    transaction.set(
+      doc(db, 'vinculos', vinculoId),
+      {
+        profissionalId,
+        pacienteId,
+        status: 'pendente',
+        conviteCodigo: token,
+        criadoEm: serverTimestamp(),
+        atualizadoEm: serverTimestamp(),
+      }
+    );
+
+    transaction.update(conviteRef, {
+      status: 'utilizado',
+      utilizadoPor: profissionalId,
+      utilizadoEm: serverTimestamp(),
+      vinculoId,
     });
+
+    return vinculoId;
   });
 }
 
-// Paciente aceita ou recusa o vínculo
+// SOLICITAÇÃO DIRETA DESATIVADA
+
+export async function solicitarVinculo(
+  pacienteId: string
+): Promise<void> {
+  if (!pacienteId.trim()) {
+    throw new Error('Paciente inválido.');
+  }
+
+  throw new Error(
+    'Utilize um convite temporário para solicitar vínculo.'
+  );
+}
+
+// PACIENTE: ACEITAR OU RECUSAR
+
 export async function responderVinculo(
   vinculoId: string,
   aceitar: boolean
 ): Promise<void> {
-  const pacienteId = auth.currentUser?.uid;
+  const pacienteId = usuarioAutenticado();
 
-  if (!pacienteId) {
-    throw new Error('Usuário não autenticado.');
-  }
+  const nomePaciente = aceitar
+    ? await obterNomePaciente(pacienteId)
+    : null;
 
   const vinculoRef = doc(
     db,
@@ -143,15 +252,16 @@ export async function responderVinculo(
   );
 
   await runTransaction(db, async (transaction) => {
-    const resultado = await transaction.get(
-      vinculoRef
-    );
+    const snapshot =
+      await transaction.get(vinculoRef);
 
-    if (!resultado.exists()) {
-      throw new Error('Solicitação não encontrada.');
+    if (!snapshot.exists()) {
+      throw new Error(
+        'Solicitação não encontrada.'
+      );
     }
 
-    const vinculo = resultado.data();
+    const vinculo = snapshot.data();
 
     if (vinculo.pacienteId !== pacienteId) {
       throw new Error(
@@ -168,19 +278,16 @@ export async function responderVinculo(
     transaction.update(vinculoRef, {
       status: aceitar ? 'ativo' : 'recusado',
       atualizadoEm: serverTimestamp(),
+      ...(aceitar ? { nomePaciente } : {}),
     });
   });
 }
 
-// Listar vínculos do paciente autenticado
+// PACIENTE: LISTAR VÍNCULOS
+
 export async function listarVinculosPaciente():
   Promise<Vinculo[]> {
-
-  const pacienteId = auth.currentUser?.uid;
-
-  if (!pacienteId) {
-    throw new Error('Usuário não autenticado.');
-  }
+  const pacienteId = usuarioAutenticado();
 
   const consulta = query(
     collection(db, 'vinculos'),
@@ -189,21 +296,54 @@ export async function listarVinculosPaciente():
 
   const resultado = await getDocs(consulta);
 
-  return resultado.docs.map((documento) => ({
-    id: documento.id,
-    ...(documento.data() as Omit<Vinculo, 'id'>),
+  const vinculos = resultado.docs.map((item) => ({
+    id: item.id,
+    ...(item.data() as Omit<Vinculo, 'id'>),
   }));
+
+  // Atualiza vínculos ativos criados antes
+  // da inclusão do campo nomePaciente.
+  const semNome = vinculos.filter(
+    (v) =>
+      v.status === 'ativo' &&
+      !v.nomePaciente
+  );
+
+  if (semNome.length > 0) {
+    try {
+      const nomePaciente =
+        await obterNomePaciente(pacienteId);
+
+      await Promise.all(
+        semNome.map((v) =>
+          updateDoc(
+            doc(db, 'vinculos', v.id!),
+            { nomePaciente }
+          )
+        )
+      );
+
+      return vinculos.map((v) =>
+        v.status === 'ativo'
+          ? { ...v, nomePaciente }
+          : v
+      );
+    } catch (erro) {
+      console.warn(
+        'Não foi possível sincronizar nome dos vínculos:',
+        erro
+      );
+    }
+  }
+
+  return vinculos;
 }
 
-// Listar vínculos do profissional autenticado
+// MÉDICO: LISTAR VÍNCULOS
+
 export async function listarVinculosProfissional():
   Promise<Vinculo[]> {
-
-  const profissionalId = auth.currentUser?.uid;
-
-  if (!profissionalId) {
-    throw new Error('Usuário não autenticado.');
-  }
+  const profissionalId = usuarioAutenticado();
 
   const consulta = query(
     collection(db, 'vinculos'),
@@ -212,21 +352,18 @@ export async function listarVinculosProfissional():
 
   const resultado = await getDocs(consulta);
 
-  return resultado.docs.map((documento) => ({
-    id: documento.id,
-    ...(documento.data() as Omit<Vinculo, 'id'>),
+  return resultado.docs.map((item) => ({
+    id: item.id,
+    ...(item.data() as Omit<Vinculo, 'id'>),
   }));
 }
 
-// Paciente revoga um vínculo ativo
+// PACIENTE: REVOGAR VÍNCULO
+
 export async function revogarVinculo(
   vinculoId: string
 ): Promise<void> {
-  const pacienteId = auth.currentUser?.uid;
-
-  if (!pacienteId) {
-    throw new Error('Usuário não autenticado.');
-  }
+  const pacienteId = usuarioAutenticado();
 
   const vinculoRef = doc(
     db,
@@ -235,15 +372,16 @@ export async function revogarVinculo(
   );
 
   await runTransaction(db, async (transaction) => {
-    const resultado = await transaction.get(
-      vinculoRef
-    );
+    const snapshot =
+      await transaction.get(vinculoRef);
 
-    if (!resultado.exists()) {
-      throw new Error('Vínculo não encontrado.');
+    if (!snapshot.exists()) {
+      throw new Error(
+        'Vínculo não encontrado.'
+      );
     }
 
-    const vinculo = resultado.data();
+    const vinculo = snapshot.data();
 
     if (vinculo.pacienteId !== pacienteId) {
       throw new Error(
@@ -262,36 +400,4 @@ export async function revogarVinculo(
       atualizadoEm: serverTimestamp(),
     });
   });
-}
-
-
-export async function solicitarVinculoPorCodigo(
-  codigo: string
-): Promise<string> {
-  const solicitar = httpsCallable<
-    { codigo: string },
-    { sucesso: boolean; vinculoId: string }
-  >(functions, "solicitarVinculoPorCodigo");
-
-  const resultado = await solicitar({
-    codigo: codigo.trim().toUpperCase(),
-  });
-
-  return resultado.data.vinculoId;
-}
-
-export interface CodigoVinculoGerado {
-  codigo: string;
-  expiraEm: number;
-}
-
-export async function gerarCodigoVinculo(): Promise<CodigoVinculoGerado> {
-  const gerarCodigo = httpsCallable<
-    Record<string, never>,
-    CodigoVinculoGerado
-  >(functions, "gerarCodigoVinculo");
-
-  const resultado = await gerarCodigo({});
-
-  return resultado.data;
 }
