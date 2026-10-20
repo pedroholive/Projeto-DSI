@@ -34,7 +34,6 @@ interface MedicamentoFormProps {
   subtitulo: string;
   textoSalvar: string;
   iconeSalvar: keyof typeof Ionicons.glyphMap;
-  textoLembrete: string;
   valoresIniciais: DadosMedicamento;
   salvando: boolean;
   onSalvar: (dados: DadosMedicamento) => Promise<void>;
@@ -46,7 +45,6 @@ export function MedicamentoForm({
   subtitulo,
   textoSalvar,
   iconeSalvar,
-  textoLembrete,
   valoresIniciais,
   salvando,
   onSalvar,
@@ -428,7 +426,7 @@ export function MedicamentoForm({
                 <Text style={formStyles.switchTitulo}>
                   Preferência de lembrete
                 </Text>
-                <Text style={formStyles.switchDescricao}>{textoLembrete}</Text>
+                <Text style={formStyles.switchDescricao}>{`Salva sua preferência. Notificações ainda não disponíveis.`}</Text>
               </View>
 
               <Switch

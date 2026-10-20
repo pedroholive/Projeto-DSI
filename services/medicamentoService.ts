@@ -308,15 +308,10 @@ export async function listarDoses(
   );
 }
 
-// =========================================================
-// DOSES
-// =========================================================
-
 function chaveDose(previsto: Date): string {
   return `dose_${previsto.getTime()}`;
 }
 
-// Horários (em milissegundos) das doses já confirmadas no dia informado.
 export async function listarConfirmacoesDoDia(
   medicamento: Medicamento,
   dia: Date,
@@ -345,7 +340,6 @@ export async function listarConfirmacoesDoDia(
     .map((d) => d.previstoEm.toMillis());
 }
 
-// Uma página do histórico completo (mais recentes primeiro).
 export async function listarHistoricoDoses(
   medicamento: Medicamento,
   cursor: CursorDoses | null,
@@ -406,7 +400,7 @@ export async function confirmarDose(
       transaction.get(doseRef),
     ]);
     if (!medSnapshot.exists() || medSnapshot.data().userId !== m.userId) {
-      throw new Error("Medicamento não encontrado ou acesso não autorizado.");
+      throw new Error(" Medicamento não encontrado/acesso não autorizado. ");
     }
     const atual = { ...medSnapshot.data(), id: m.id } as Medicamento;
     if (

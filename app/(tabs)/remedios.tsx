@@ -181,7 +181,6 @@ function FluxoMedicamentos({ userId }: { userId: string }) {
                 : "Salvar alterações"
             }
             iconeSalvar={formulario.tipo === "novo" ? "add" : "checkmark"}
-            textoLembrete="Salva sua preferência. Notificações ainda não disponíveis."
             valoresIniciais={formulario.valores}
             salvando={salvando}
             onSalvar={salvar}
