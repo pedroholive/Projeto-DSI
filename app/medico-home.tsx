@@ -219,7 +219,8 @@ export default function DoctorHomeScreen() {
       </ScrollView>
 
       <View style={styles.bottomBar}>
-        <BottomItem icon="people-outline" label="Pacientes" active />
+        <BottomItem icon="people-outline" label="Pacientes" active
+        onPress={() => router.push('/meus-pacientes')}/>
         <BottomItem icon="notifications-outline" label="Alertas" />
         <BottomItem icon="calendar-outline" label="Consultas" />
         <BottomItem icon="person-outline" label="Perfil" onPress={handleLogout} />
