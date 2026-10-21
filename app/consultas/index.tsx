@@ -1,5 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
-
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -7,38 +6,48 @@ import {
   StyleSheet,
   Text,
   View,
-} from "react-native";
+} from 'react-native';
 
-import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { auth } from "@/firebaseConfig";
-import { type Consulta, listarConsultas } from "@/services/consultaService";
+import { auth } from '@/firebaseConfig';
+import {
+  type Consulta,
+  listarConsultas,
+} from '@/services/consultaService';
 
-// Converte DD/MM/AAAA e HH:MM para uma data válida.
+const C = {
+  bg: '#F4F8F7',
+  card: '#FFFFFF',
+  primary: '#0E9F8C',
+  primaryDark: '#0E766D',
+  primarySoft: '#E7F8F4',
+  text: '#273331',
+  muted: '#7E8D89',
+  border: '#E0EAE8',
+  danger: '#D94B57',
+  dangerSoft: '#FDE8EA',
+  warning: '#B7791F',
+  warningSoft: '#FFF3D6',
+};
+
 function converterDataHora(data: string, horario: string): Date | null {
-  const partesData = data.trim().split("/");
-  const partesHorario = horario.trim().split(":");
+  const dataLimpa = data.trim();
+  const horarioLimpo = horario.trim();
 
-  if (
-    partesData.length !== 3 ||
-    partesHorario.length !== 2 ||
-    !/^\d{2}\/\d{2}\/\d{4}$/.test(data.trim()) ||
-    !/^\d{2}:\d{2}$/.test(horario.trim())
-  ) {
-    return null;
-  }
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dataLimpa)) return null;
+  if (!/^\d{2}:\d{2}$/.test(horarioLimpo)) return null;
 
-  const [dia, mes, ano] = partesData.map(Number);
-  const [hora, minuto] = partesHorario.map(Number);
+  const [dia, mes, ano] = dataLimpa.split('/').map(Number);
+  const [hora, minuto] = horarioLimpo.split(':').map(Number);
 
   if (
     ano < 1900 ||
     mes < 1 ||
     mes > 12 ||
     dia < 1 ||
-    dia > 31 ||
     hora < 0 ||
     hora > 23 ||
     minuto < 0 ||
@@ -47,7 +56,7 @@ function converterDataHora(data: string, horario: string): Date | null {
     return null;
   }
 
-  const resultado = new Date(ano, mes - 1, dia, hora, minuto);
+  const resultado = new Date(ano, mes - 1, dia, hora, minuto, 0, 0);
 
   if (
     resultado.getFullYear() !== ano ||
@@ -62,15 +71,13 @@ function converterDataHora(data: string, horario: string): Date | null {
   return resultado;
 }
 
-// Gera os sete dias da semana atual.
 function gerarSemana(dataReferencia: Date) {
   const inicio = new Date(dataReferencia);
   const diaSemana = inicio.getDay();
 
-  // Segunda-feira como primeiro dia.
   inicio.setDate(inicio.getDate() - ((diaSemana + 6) % 7));
 
-  const nomes = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const nomes = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
   return Array.from({ length: 7 }, (_, indice) => {
     const data = new Date(inicio);
@@ -88,83 +95,209 @@ function gerarSemana(dataReferencia: Date) {
   });
 }
 
-interface DiaCalendarioProps {
-  semana: string;
-  dia: string;
-  selecionado?: boolean;
+function obterStatusConsulta(consulta: Consulta, anterior: boolean) {
+  if (anterior) {
+    return {
+      texto: 'Realizada',
+      cor: C.muted,
+      fundo: '#EEF3F2',
+    };
+  }
+
+  switch (consulta.status) {
+    case 'aguardando_confirmacao':
+      return {
+        texto: 'Aguardando',
+        cor: C.warning,
+        fundo: C.warningSoft,
+      };
+
+    case 'confirmada':
+      return {
+        texto: 'Confirmada',
+        cor: C.primaryDark,
+        fundo: C.primarySoft,
+      };
+
+    case 'recusada':
+      return {
+        texto: 'Recusada',
+        cor: C.danger,
+        fundo: C.dangerSoft,
+      };
+
+    case 'cancelada':
+      return {
+        texto: 'Cancelada',
+        cor: C.danger,
+        fundo: C.dangerSoft,
+      };
+
+    default:
+      return {
+        texto: 'Agendada',
+        cor: C.primaryDark,
+        fundo: C.primarySoft,
+      };
+  }
 }
 
 function DiaCalendario({
   semana,
   dia,
   selecionado = false,
-}: DiaCalendarioProps) {
+}: {
+  semana: string;
+  dia: string;
+  selecionado?: boolean;
+}) {
   return (
-    <View style={[styles.diaCalendario, selecionado && styles.diaSelecionado]}>
+    <View
+      style={[
+        styles.diaCalendario,
+        selecionado && styles.diaSelecionado,
+      ]}
+    >
       <Text
-        style={[styles.semanaTexto, selecionado && styles.textoSelecionado]}
+        style={[
+          styles.semanaTexto,
+          selecionado && styles.textoSelecionado,
+        ]}
       >
         {semana}
       </Text>
 
-      <Text style={[styles.diaTexto, selecionado && styles.textoSelecionado]}>
+      <Text
+        style={[
+          styles.diaTexto,
+          selecionado && styles.textoSelecionado,
+        ]}
+      >
         {dia}
       </Text>
     </View>
   );
 }
 
-// Card reutilizado nas listas de consultas.
 function CardConsulta({
   consulta,
   anterior = false,
+  invalida = false,
   onPress,
 }: {
   consulta: Consulta;
   anterior?: boolean;
+  invalida?: boolean;
   onPress: () => void;
 }) {
+  const status = invalida
+    ? {
+        texto: 'Revisar',
+        cor: C.danger,
+        fundo: C.dangerSoft,
+      }
+    : obterStatusConsulta(consulta, anterior);
+
   return (
-    <Pressable style={styles.cardConsulta} onPress={onPress}>
+    <Pressable
+      style={({ pressed }) => [
+        styles.cardConsulta,
+        pressed && styles.cardPressionado,
+      ]}
+      onPress={onPress}
+    >
       <View
-        style={[styles.cardConsultaIcone, anterior && styles.iconeAnterior]}
+        style={[
+          styles.cardConsultaIcone,
+          anterior && styles.cardConsultaIconeAnterior,
+          invalida && styles.cardConsultaIconeInvalida,
+        ]}
       >
         <Ionicons
-          name={anterior ? "time-outline" : "calendar-outline"}
-          size={22}
-          color={anterior ? "#667572" : "#0E766D"}
+          name={
+            invalida
+              ? 'alert-circle-outline'
+              : anterior
+              ? 'time-outline'
+              : 'calendar-outline'
+          }
+          size={21}
+          color={
+            invalida
+              ? C.danger
+              : anterior
+              ? C.muted
+              : C.primaryDark
+          }
         />
       </View>
 
       <View style={styles.cardConsultaConteudo}>
-        <Text style={styles.cardEspecialidade}>{consulta.especialidade}</Text>
+        <View style={styles.cardConsultaTopo}>
+          <View style={styles.cardTituloArea}>
+            <Text style={styles.cardEspecialidade}>
+              {consulta.especialidade}
+            </Text>
 
-        <Text style={styles.cardMedico}>{consulta.medico}</Text>
+            <Text style={styles.cardMedico}>
+              {consulta.medico}
+            </Text>
+          </View>
+
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: status.fundo },
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusBadgeTexto,
+                { color: status.cor },
+              ]}
+            >
+              {status.texto}
+            </Text>
+          </View>
+        </View>
 
         <View style={styles.cardInformacao}>
-          <Ionicons name="time-outline" size={15} color="#667572" />
-
+          <Ionicons name="time-outline" size={14} color={C.muted} />
           <Text style={styles.cardInformacaoTexto}>
             {consulta.data} • {consulta.horario}
           </Text>
         </View>
 
         <View style={styles.cardInformacao}>
-          <Ionicons name="location-outline" size={15} color="#667572" />
-
-          <Text style={styles.cardInformacaoTexto}>{consulta.local}</Text>
+          <Ionicons name="location-outline" size={14} color={C.muted} />
+          <Text style={styles.cardInformacaoTexto}>
+            {consulta.local}
+          </Text>
         </View>
 
-        {consulta.observacao ? (
+        {!!consulta.observacao && (
           <View style={styles.cardInformacao}>
-            <Ionicons name="document-text-outline" size={15} color="#667572" />
+            <Ionicons
+              name="document-text-outline"
+              size={14}
+              color={C.muted}
+            />
 
-            <Text style={styles.cardInformacaoTexto}>
+            <Text
+              style={styles.cardInformacaoTexto}
+              numberOfLines={2}
+            >
               {consulta.observacao}
             </Text>
           </View>
-        ) : null}
+        )}
       </View>
+
+      <Ionicons
+        name="chevron-forward"
+        size={19}
+        color="#A4B0AD"
+      />
     </Pressable>
   );
 }
@@ -174,30 +307,22 @@ export default function ConsultasScreen() {
 
   const [consultas, setConsultas] = useState<Consulta[]>([]);
   const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState("");
+  const [erro, setErro] = useState('');
   const [agora, setAgora] = useState(() => new Date());
-
-  // ---------------------------------------------------------
-  // ABRIR TELA DE EDIÇÃO
-  // ---------------------------------------------------------
 
   function abrirEdicao(consulta: Consulta) {
     if (!consulta.id) {
-      console.error("Não foi possível editar: consulta sem ID.");
+      console.error('Não foi possível editar: consulta sem ID.');
       return;
     }
 
     router.push({
-      pathname: "/consultas/editar",
+      pathname: '/consultas/editar',
       params: {
         id: consulta.id,
       },
     });
   }
-
-  // ---------------------------------------------------------
-  // CARREGAR CONSULTAS DO FIREBASE
-  // ---------------------------------------------------------
 
   useFocusEffect(
     useCallback(() => {
@@ -206,7 +331,7 @@ export default function ConsultasScreen() {
       async function carregarConsultas() {
         if (ativo) {
           setCarregando(true);
-          setErro("");
+          setErro('');
           setAgora(new Date());
         }
 
@@ -216,7 +341,7 @@ export default function ConsultasScreen() {
           if (!usuario) {
             if (ativo) {
               setConsultas([]);
-              setErro("Faça login para visualizar suas consultas.");
+              setErro('Faça login para visualizar suas consultas.');
             }
             return;
           }
@@ -227,12 +352,12 @@ export default function ConsultasScreen() {
             setConsultas(dados);
           }
         } catch (error) {
-          console.error("Erro ao carregar consultas:", error);
+          console.error('Erro ao carregar consultas:', error);
 
           if (ativo) {
             setConsultas([]);
             setErro(
-              "Não foi possível carregar suas consultas. Tente novamente.",
+              'Não foi possível carregar suas consultas. Tente novamente.'
             );
           }
         } finally {
@@ -242,23 +367,18 @@ export default function ConsultasScreen() {
         }
       }
 
-      carregarConsultas();
+      void carregarConsultas();
 
       return () => {
         ativo = false;
       };
-    }, []),
+    }, [])
   );
 
-  // ---------------------------------------------------------
-  // CALENDÁRIO
-  // ---------------------------------------------------------
-
-  const semanaAtual = useMemo(() => gerarSemana(agora), [agora]);
-
-  // ---------------------------------------------------------
-  // ORGANIZAR CONSULTAS POR DATA
-  // ---------------------------------------------------------
+  const semanaAtual = useMemo(
+    () => gerarSemana(agora),
+    [agora]
+  );
 
   const {
     proximaConsulta,
@@ -271,7 +391,10 @@ export default function ConsultasScreen() {
     const invalidas: Consulta[] = [];
 
     consultas.forEach((consulta) => {
-      const dataHora = converterDataHora(consulta.data, consulta.horario);
+      const dataHora = converterDataHora(
+        consulta.data,
+        consulta.horario
+      );
 
       if (!dataHora) {
         invalidas.push(consulta);
@@ -290,9 +413,15 @@ export default function ConsultasScreen() {
       }
     });
 
-    futuras.sort((a, b) => a.dataHora.getTime() - b.dataHora.getTime());
+    futuras.sort(
+      (a, b) =>
+        a.dataHora.getTime() - b.dataHora.getTime()
+    );
 
-    anteriores.sort((a, b) => b.dataHora.getTime() - a.dataHora.getTime());
+    anteriores.sort(
+      (a, b) =>
+        b.dataHora.getTime() - a.dataHora.getTime()
+    );
 
     return {
       proximaConsulta: futuras[0] ?? null,
@@ -302,220 +431,398 @@ export default function ConsultasScreen() {
     };
   }, [consultas, agora]);
 
+  const totalFuturas =
+    (proximaConsulta ? 1 : 0) +
+    outrasConsultas.length;
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={styles.container}
+      edges={['top', 'left', 'right']}
+    >
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* HEADER */}
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <Pressable
+              style={styles.botaoVoltar}
+              onPress={() => router.back()}
+              accessibilityLabel="Voltar"
+            >
+              <Ionicons
+                name="chevron-back"
+                size={22}
+                color={C.text}
+              />
+            </Pressable>
 
-        <View style={styles.header}>
-          <Pressable style={styles.botaoVoltar} onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={26} color="#273331" />
-          </Pressable>
-
-          <Text style={styles.titulo}>Consultas</Text>
-
-          <Pressable
-            style={styles.botaoAdicionar}
-            onPress={() => router.push("/consultas/nova")}
-          >
-            <Ionicons name="add" size={27} color="#FFFFFF" />
-          </Pressable>
-        </View>
-
-        {/* CALENDÁRIO DINÂMICO */}
-
-        <View style={styles.calendario}>
-          {semanaAtual.map((dia) => (
-            <DiaCalendario
-              key={dia.chave}
-              semana={dia.semana}
-              dia={dia.dia}
-              selecionado={dia.selecionado}
-            />
-          ))}
-        </View>
-
-        {/* CARREGAMENTO */}
-
-        {carregando ? (
-          <View style={styles.carregando}>
-            <ActivityIndicator size="large" color="#0E766D" />
-
-            <Text style={styles.carregandoTexto}>Carregando consultas...</Text>
-          </View>
-        ) : erro ? (
-          <View style={styles.estadoVazio}>
-            <Ionicons name="alert-circle-outline" size={42} color="#0E766D" />
-
-            <Text style={styles.vazioDescricao}>{erro}</Text>
-          </View>
-        ) : consultas.length === 0 ? (
-          /* NENHUMA CONSULTA */
-
-          <View style={styles.estadoVazio}>
-            <View style={styles.iconeVazio}>
-              <Ionicons name="calendar-outline" size={38} color="#0E766D" />
+            <View style={styles.headerTexto}>
+              <Text style={styles.titulo}>Consultas</Text>
+              <Text style={styles.subtitulo}>
+                Organize seus próximos compromissos.
+              </Text>
             </View>
 
-            <Text style={styles.vazioTitulo}>Nenhuma consulta cadastrada</Text>
-
-            <Text style={styles.vazioDescricao}>
-              Adicione sua primeira consulta para acompanhar seus compromissos.
-            </Text>
-
             <Pressable
-              style={styles.botaoNovaConsulta}
-              onPress={() => router.push("/consultas/nova")}
+              style={styles.botaoAdicionar}
+              onPress={() => router.push('/consultas/nova')}
+              accessibilityLabel="Nova consulta"
             >
-              <Ionicons name="add" size={20} color="#FFFFFF" />
-
-              <Text style={styles.botaoNovaConsultaTexto}>Nova consulta</Text>
+              <Ionicons
+                name="add"
+                size={25}
+                color="#FFFFFF"
+              />
             </Pressable>
           </View>
-        ) : (
-          <>
-            {/* PRÓXIMA CONSULTA */}
 
-            <Text style={styles.secaoTitulo}>Próxima Consulta</Text>
+          <View style={styles.calendarioCard}>
+            <View style={styles.calendarioHeader}>
+              <View>
+                <Text style={styles.calendarioTitulo}>
+                  Esta semana
+                </Text>
+                <Text style={styles.calendarioDescricao}>
+                  {totalFuturas === 0
+                    ? 'Nenhuma consulta futura'
+                    : `${totalFuturas} ${
+                        totalFuturas === 1
+                          ? 'consulta futura'
+                          : 'consultas futuras'
+                      }`}
+                </Text>
+              </View>
 
-            {proximaConsulta ? (
+              <View style={styles.calendarioIcone}>
+                <Ionicons
+                  name="calendar-outline"
+                  size={20}
+                  color={C.primaryDark}
+                />
+              </View>
+            </View>
+
+            <View style={styles.calendario}>
+              {semanaAtual.map((dia) => (
+                <DiaCalendario
+                  key={dia.chave}
+                  semana={dia.semana}
+                  dia={dia.dia}
+                  selecionado={dia.selecionado}
+                />
+              ))}
+            </View>
+          </View>
+
+          {carregando ? (
+            <View style={styles.carregando}>
+              <ActivityIndicator
+                size="small"
+                color={C.primary}
+              />
+
+              <Text style={styles.carregandoTexto}>
+                Carregando consultas...
+              </Text>
+            </View>
+          ) : erro ? (
+            <View style={styles.estadoVazio}>
+              <View style={styles.iconeVazio}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={32}
+                  color={C.primaryDark}
+                />
+              </View>
+
+              <Text style={styles.vazioTitulo}>
+                Não foi possível carregar
+              </Text>
+
+              <Text style={styles.vazioDescricao}>
+                {erro}
+              </Text>
+            </View>
+          ) : consultas.length === 0 ? (
+            <View style={styles.estadoVazio}>
+              <View style={styles.iconeVazio}>
+                <Ionicons
+                  name="calendar-outline"
+                  size={34}
+                  color={C.primaryDark}
+                />
+              </View>
+
+              <Text style={styles.vazioTitulo}>
+                Nenhuma consulta cadastrada
+              </Text>
+
+              <Text style={styles.vazioDescricao}>
+                Adicione sua primeira consulta para acompanhar seus compromissos.
+              </Text>
+
               <Pressable
-                style={styles.cardPrincipal}
-                onPress={() => abrirEdicao(proximaConsulta)}
+                style={styles.botaoNovaConsulta}
+                onPress={() => router.push('/consultas/nova')}
               >
-                <View style={styles.cardTopo}>
-                  <View style={styles.consultaStatus}>
+                <Ionicons
+                  name="add"
+                  size={19}
+                  color="#FFFFFF"
+                />
+
+                <Text style={styles.botaoNovaConsultaTexto}>
+                  Nova consulta
+                </Text>
+              </Pressable>
+            </View>
+          ) : (
+            <>
+              <View style={styles.secaoCabecalho}>
+                <Text style={styles.secaoTitulo}>
+                  Próxima consulta
+                </Text>
+              </View>
+
+              {proximaConsulta ? (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.proximaCard,
+                    pressed && styles.cardPressionado,
+                  ]}
+                  onPress={() =>
+                    abrirEdicao(proximaConsulta)
+                  }
+                >
+                  <View style={styles.proximaTopo}>
+                    <View style={styles.proximaTag}>
+                      <Ionicons
+                        name="calendar-outline"
+                        size={16}
+                        color={C.primaryDark}
+                      />
+                      <Text style={styles.proximaTagTexto}>
+                        Próxima
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        {
+                          backgroundColor:
+                            obterStatusConsulta(
+                              proximaConsulta,
+                              false
+                            ).fundo,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusBadgeTexto,
+                          {
+                            color:
+                              obterStatusConsulta(
+                                proximaConsulta,
+                                false
+                              ).cor,
+                          },
+                        ]}
+                      >
+                        {
+                          obterStatusConsulta(
+                            proximaConsulta,
+                            false
+                          ).texto
+                        }
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.proximaEspecialidade}>
+                    {proximaConsulta.especialidade}
+                  </Text>
+
+                  <Text style={styles.proximaMedico}>
+                    {proximaConsulta.medico}
+                  </Text>
+
+                  <View style={styles.proximaInfoLinha}>
                     <Ionicons
-                      name="calendar-outline"
-                      size={19}
-                      color="#0E9F8C"
+                      name="time-outline"
+                      size={16}
+                      color={C.muted}
                     />
 
-                    <Text style={styles.consultaStatusTexto}>
-                      Próxima consulta
-                    </Text>
-                  </View>
-
-                  <View style={styles.statusBadge}>
-                    <Text style={styles.statusBadgeTexto}>Agendada</Text>
-                  </View>
-                </View>
-
-                <View style={styles.medicoContainer}>
-                  <View style={styles.medicoIcone}>
-                    <Ionicons name="person-outline" size={24} color="#0E766D" />
-                  </View>
-
-                  <View style={styles.medicoInformacoes}>
-                    <Text style={styles.medicoNome}>
-                      {proximaConsulta.medico}
-                    </Text>
-
-                    <Text style={styles.medicoDetalhes}>
-                      {proximaConsulta.especialidade}
-                      {" • "}
-                      {proximaConsulta.local}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.divisor} />
-
-                <View style={styles.consultaRodape}>
-                  <View style={styles.dataContainer}>
-                    <Ionicons name="time-outline" size={17} color="#667572" />
-
-                    <Text style={styles.dataTexto}>
-                      {proximaConsulta.data}
-                      {" • "}
+                    <Text style={styles.proximaInfoTexto}>
+                      {proximaConsulta.data} •{' '}
                       {proximaConsulta.horario}
                     </Text>
                   </View>
-                </View>
 
-                {proximaConsulta.observacao ? (
-                  <View style={styles.observacao}>
+                  <View style={styles.proximaInfoLinha}>
                     <Ionicons
-                      name="document-text-outline"
-                      size={17}
-                      color="#667572"
+                      name="location-outline"
+                      size={16}
+                      color={C.muted}
                     />
 
-                    <Text style={styles.observacaoTexto}>
-                      {proximaConsulta.observacao}
+                    <Text style={styles.proximaInfoTexto}>
+                      {proximaConsulta.local}
                     </Text>
                   </View>
-                ) : null}
-              </Pressable>
-            ) : (
-              <View style={styles.cardPrincipal}>
-                <Text style={styles.vazioDescricao}>
-                  Você não possui consultas futuras cadastradas.
-                </Text>
-              </View>
-            )}
 
-            {/* OUTRAS CONSULTAS FUTURAS */}
+                  {!!proximaConsulta.observacao && (
+                    <View style={styles.observacao}>
+                      <Ionicons
+                        name="document-text-outline"
+                        size={16}
+                        color={C.muted}
+                      />
 
-            {outrasConsultas.length > 0 && (
-              <>
-                <Text style={styles.secaoTitulo}>Outras Consultas</Text>
+                      <Text style={styles.observacaoTexto}>
+                        {proximaConsulta.observacao}
+                      </Text>
+                    </View>
+                  )}
 
-                {outrasConsultas.map((consulta, indice) => (
-                  <CardConsulta
-                    key={consulta.id ?? `anterior-${indice}`}
-                    consulta={consulta}
-                    anterior
-                    onPress={() => abrirEdicao(consulta)}
+                  <View style={styles.editarHint}>
+                    <Text style={styles.editarHintTexto}>
+                      Toque para ver ou editar
+                    </Text>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={17}
+                      color={C.primaryDark}
+                    />
+                  </View>
+                </Pressable>
+              ) : (
+                <View style={styles.semFuturasCard}>
+                  <Ionicons
+                    name="calendar-clear-outline"
+                    size={27}
+                    color="#A9B5B2"
                   />
-                ))}
-              </>
-            )}
 
-            {/* CONSULTAS ANTERIORES */}
+                  <Text style={styles.semFuturasTitulo}>
+                    Nenhuma consulta futura
+                  </Text>
 
-            {consultasAnteriores.length > 0 && (
-              <>
-                <Text style={styles.secaoTitulo}>Consultas Anteriores</Text>
+                  <Text style={styles.semFuturasTexto}>
+                    Você pode adicionar uma nova consulta pelo botão +.
+                  </Text>
+                </View>
+              )}
 
-                {consultasAnteriores.map((consulta, indice) => (
-                  <CardConsulta
-                    key={consulta.id ?? `anterior-${indice}`}
-                    consulta={consulta}
-                    anterior
-                    onPress={() => abrirEdicao(consulta)}
-                  />
-                ))}
-              </>
-            )}
+              {outrasConsultas.length > 0 && (
+                <View style={styles.secao}>
+                  <View style={styles.secaoCabecalho}>
+                    <Text style={styles.secaoTitulo}>
+                      Outras consultas
+                    </Text>
 
-            {/* CONSULTAS COM DATA INVÁLIDA */}
+                    <Text style={styles.secaoContagem}>
+                      {outrasConsultas.length}
+                    </Text>
+                  </View>
 
-            {consultasInvalidas.length > 0 && (
-              <>
-                <Text style={styles.secaoTitulo}>
-                  Consultas com data inválida
-                </Text>
+                  <View style={styles.lista}>
+                    {outrasConsultas.map(
+                      (consulta, indice) => (
+                        <CardConsulta
+                          key={
+                            consulta.id ??
+                            `futura-${indice}`
+                          }
+                          consulta={consulta}
+                          onPress={() =>
+                            abrirEdicao(consulta)
+                          }
+                        />
+                      )
+                    )}
+                  </View>
+                </View>
+              )}
 
-                <Text style={styles.avisoTexto}>
-                  Confira a data e o horário destes registros.
-                </Text>
+              {consultasAnteriores.length > 0 && (
+                <View style={styles.secao}>
+                  <View style={styles.secaoCabecalho}>
+                    <Text style={styles.secaoTitulo}>
+                      Consultas anteriores
+                    </Text>
 
-                {consultasInvalidas.map((consulta, indice) => (
-                  <CardConsulta
-                    key={consulta.id ?? `anterior-${indice}`}
-                    consulta={consulta}
-                    anterior
-                    onPress={() => abrirEdicao(consulta)}
-                  />
-                ))}
-              </>
-            )}
-          </>
-        )}
+                    <Text style={styles.secaoContagem}>
+                      {consultasAnteriores.length}
+                    </Text>
+                  </View>
+
+                  <View style={styles.lista}>
+                    {consultasAnteriores.map(
+                      (consulta, indice) => (
+                        <CardConsulta
+                          key={
+                            consulta.id ??
+                            `anterior-${indice}`
+                          }
+                          consulta={consulta}
+                          anterior
+                          onPress={() =>
+                            abrirEdicao(consulta)
+                          }
+                        />
+                      )
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {consultasInvalidas.length > 0 && (
+                <View style={styles.secao}>
+                  <View style={styles.avisoInvalidas}>
+                    <Ionicons
+                      name="warning-outline"
+                      size={20}
+                      color={C.danger}
+                    />
+
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.avisoInvalidasTitulo}>
+                        Registros que precisam de revisão
+                      </Text>
+
+                      <Text style={styles.avisoInvalidasTexto}>
+                        Estas consultas foram salvas com data ou horário em formato inválido. Toque nelas para corrigir.
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.lista}>
+                    {consultasInvalidas.map(
+                      (consulta, indice) => (
+                        <CardConsulta
+                          key={
+                            consulta.id ??
+                            `invalida-${indice}`
+                          }
+                          consulta={consulta}
+                          invalida
+                          onPress={() =>
+                            abrirEdicao(consulta)
+                          }
+                        />
+                      )
+                    )}
+                  </View>
+                </View>
+              )}
+            </>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -524,334 +831,452 @@ export default function ConsultasScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F4F6F7",
+    backgroundColor: C.bg,
   },
 
   scrollContent: {
-    width: "100%",
+    flexGrow: 1,
+    alignItems: 'center',
+  },
+
+  content: {
+    width: '100%',
     maxWidth: 520,
-    alignSelf: "center",
     paddingHorizontal: 20,
+    paddingTop: 16,
     paddingBottom: 40,
   },
 
-  // HEADER
-
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 10,
-    paddingBottom: 25,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
   },
 
   botaoVoltar: {
     width: 42,
     height: 42,
-    justifyContent: "center",
-    alignItems: "center",
+    borderRadius: 21,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+
+  headerTexto: {
+    flex: 1,
   },
 
   titulo: {
-    fontSize: 23,
-    fontWeight: "700",
-    color: "#273331",
+    fontSize: 25,
+    fontWeight: '700',
+    color: C.text,
+  },
+
+  subtitulo: {
+    fontSize: 12,
+    color: C.muted,
+    marginTop: 3,
   },
 
   botaoAdicionar: {
     width: 42,
     height: 42,
-    borderRadius: 13,
-    backgroundColor: "#0E766D",
-    justifyContent: "center",
-    alignItems: "center",
+    borderRadius: 14,
+    backgroundColor: C.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
-  // CALENDÁRIO
+  calendarioCard: {
+    backgroundColor: C.card,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#E8EFED',
+    padding: 16,
+    marginBottom: 18,
+  },
+
+  calendarioHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+
+  calendarioTitulo: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: C.text,
+  },
+
+  calendarioDescricao: {
+    fontSize: 11,
+    color: C.muted,
+    marginTop: 3,
+  },
+
+  calendarioIcone: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: C.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   calendario: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 30,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 3,
   },
 
   diaCalendario: {
     flex: 1,
-    maxWidth: 46,
-    height: 61,
-    borderRadius: 15,
-    justifyContent: "center",
-    alignItems: "center",
+    minWidth: 0,
+    height: 58,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   diaSelecionado: {
-    backgroundColor: "#0E9F8C",
+    backgroundColor: C.primary,
   },
 
   semanaTexto: {
-    fontSize: 12,
-    color: "#667572",
-    marginBottom: 4,
+    fontSize: 10,
+    color: C.muted,
+    marginBottom: 3,
   },
 
   diaTexto: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#273331",
+    fontSize: 15,
+    fontWeight: '700',
+    color: C.text,
   },
 
   textoSelecionado: {
-    color: "#FFFFFF",
+    color: '#FFFFFF',
   },
 
-  // SEÇÕES
-
-  secaoTitulo: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#273331",
-    marginBottom: 13,
+  carregando: {
+    minHeight: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
   },
 
-  avisoTexto: {
+  carregandoTexto: {
     fontSize: 13,
-    color: "#667572",
-    marginBottom: 12,
+    color: C.muted,
   },
 
-  // CARD PRINCIPAL
-
-  cardPrincipal: {
-    backgroundColor: "#FFFFFF",
+  estadoVazio: {
+    backgroundColor: C.card,
     borderRadius: 22,
-    padding: 18,
-    marginBottom: 26,
     borderWidth: 1,
-    borderColor: "#EDF1F0",
+    borderColor: '#E8EFED',
+    minHeight: 250,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
   },
 
-  cardTopo: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  iconeVazio: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: C.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
-  consultaStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
+  vazioTitulo: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: C.text,
+    marginTop: 15,
+    textAlign: 'center',
   },
 
-  consultaStatusTexto: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#0E9F8C",
-  },
-
-  statusBadge: {
-    backgroundColor: "#E8F8F4",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-  },
-
-  statusBadgeTexto: {
+  vazioDescricao: {
     fontSize: 12,
-    fontWeight: "600",
-    color: "#0E766D",
+    lineHeight: 18,
+    color: C.muted,
+    marginTop: 6,
+    textAlign: 'center',
   },
 
-  medicoContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+  botaoNovaConsulta: {
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: C.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 17,
+    gap: 6,
+    marginTop: 18,
+  },
+
+  botaoNovaConsultaTexto: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  secao: {
     marginTop: 20,
   },
 
-  medicoIcone: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#DDF3EC",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
+  secaoCabecalho: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
 
-  medicoInformacoes: {
-    flex: 1,
-  },
-
-  medicoNome: {
+  secaoTitulo: {
     fontSize: 16,
-    fontWeight: "700",
-    color: "#273331",
+    fontWeight: '700',
+    color: C.text,
   },
 
-  medicoDetalhes: {
-    fontSize: 13,
-    color: "#667572",
-    marginTop: 3,
+  secaoContagem: {
+    minWidth: 25,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: '#E9F0EE',
+    color: C.muted,
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
   },
 
-  divisor: {
-    height: 1,
-    backgroundColor: "#EDF1F0",
-    marginVertical: 16,
+  proximaCard: {
+    backgroundColor: C.card,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#E8EFED',
+    padding: 18,
+    marginBottom: 6,
   },
 
-  consultaRodape: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  proximaTopo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
 
-  dataContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+  proximaTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
   },
 
-  dataTexto: {
+  proximaTagTexto: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: C.primaryDark,
+  },
+
+  statusBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 11,
+  },
+
+  statusBadgeTexto: {
+    fontSize: 9,
+    fontWeight: '700',
+  },
+
+  proximaEspecialidade: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: C.text,
+    marginTop: 18,
+  },
+
+  proximaMedico: {
     fontSize: 13,
-    color: "#667572",
+    color: C.muted,
+    marginTop: 3,
+    marginBottom: 11,
+  },
+
+  proximaInfoLinha: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 7,
+  },
+
+  proximaInfoTexto: {
+    flex: 1,
+    fontSize: 12,
+    color: '#52615E',
   },
 
   observacao: {
-    flexDirection: "row",
-    alignItems: "flex-start",
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: 7,
-    marginTop: 13,
-    backgroundColor: "#F7FAF9",
+    backgroundColor: '#F7FAF9',
     borderRadius: 10,
     padding: 10,
+    marginTop: 12,
   },
 
   observacaoTexto: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 11,
     lineHeight: 17,
-    color: "#667572",
+    color: '#52615E',
   },
 
-  // CARDS DE CONSULTAS
+  editarHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+    marginTop: 15,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#EEF2F1',
+  },
+
+  editarHintTexto: {
+    fontSize: 10,
+    color: C.primaryDark,
+    fontWeight: '600',
+  },
+
+  semFuturasCard: {
+    backgroundColor: C.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E8EFED',
+    padding: 22,
+    alignItems: 'center',
+  },
+
+  semFuturasTitulo: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: C.text,
+    marginTop: 8,
+  },
+
+  semFuturasTexto: {
+    fontSize: 11,
+    color: C.muted,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+
+  lista: {
+    gap: 10,
+  },
 
   cardConsulta: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.card,
     borderRadius: 18,
-    padding: 15,
-    marginBottom: 11,
     borderWidth: 1,
-    borderColor: "#EDF1F0",
+    borderColor: '#E8EFED',
+    padding: 14,
+  },
+
+  cardPressionado: {
+    opacity: 0.78,
   },
 
   cardConsultaIcone: {
-    width: 46,
-    height: 46,
+    width: 44,
+    height: 44,
     borderRadius: 14,
-    backgroundColor: "#E8F8F4",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 13,
+    backgroundColor: C.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
 
-  iconeAnterior: {
-    backgroundColor: "#EEF1F0",
+  cardConsultaIconeAnterior: {
+    backgroundColor: '#EEF3F2',
+  },
+
+  cardConsultaIconeInvalida: {
+    backgroundColor: C.dangerSoft,
   },
 
   cardConsultaConteudo: {
     flex: 1,
   },
 
+  cardConsultaTopo: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+
+  cardTituloArea: {
+    flex: 1,
+  },
+
   cardEspecialidade: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#273331",
+    fontSize: 14,
+    fontWeight: '700',
+    color: C.text,
   },
 
   cardMedico: {
-    fontSize: 13,
-    color: "#667572",
+    fontSize: 11,
+    color: C.muted,
     marginTop: 2,
-    marginBottom: 7,
   },
 
   cardInformacao: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 5,
-    marginTop: 3,
+    marginTop: 6,
   },
 
   cardInformacaoTexto: {
     flex: 1,
+    fontSize: 10,
+    lineHeight: 15,
+    color: C.muted,
+  },
+
+  avisoInvalidas: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: C.dangerSoft,
+    marginBottom: 10,
+  },
+
+  avisoInvalidasTitulo: {
     fontSize: 12,
-    color: "#667572",
+    fontWeight: '700',
+    color: C.danger,
   },
 
-  // CARREGAMENTO
-
-  carregando: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 100,
-  },
-
-  carregandoTexto: {
-    marginTop: 10,
-    fontSize: 14,
-    color: "#667572",
-  },
-
-  // ESTADO VAZIO
-
-  estadoVazio: {
-    alignItems: "center",
-    paddingTop: 60,
-    paddingHorizontal: 20,
-  },
-
-  iconeVazio: {
-    width: 75,
-    height: 75,
-    borderRadius: 22,
-    backgroundColor: "#DDF3EC",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  vazioTitulo: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#273331",
-    marginTop: 17,
-    textAlign: "center",
-  },
-
-  vazioDescricao: {
-    fontSize: 14,
-    color: "#667572",
-    textAlign: "center",
-    lineHeight: 20,
-    marginTop: 7,
-  },
-
-  botaoNovaConsulta: {
-    height: 47,
-    paddingHorizontal: 18,
-    borderRadius: 13,
-    backgroundColor: "#0E766D",
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 20,
-  },
-
-  botaoNovaConsultaTexto: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "700",
+  avisoInvalidasTexto: {
+    fontSize: 10,
+    lineHeight: 15,
+    color: '#8D4A51',
+    marginTop: 3,
   },
 });
+

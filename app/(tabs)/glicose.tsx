@@ -1,61 +1,49 @@
 
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Alert,
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
-
-import Svg, {
-  Line,
-  Polyline,
-  Circle,
-  Text as SvgText,
-} from 'react-native-svg';
-
-import { useFocusEffect } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import type { User } from 'firebase/auth';
+import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 
 import { auth } from '@/firebaseConfig';
-
 import {
-  criarGlicemia,
-  listarGlicemias,
   atualizarGlicemia,
   excluirGlicemia,
+  listarGlicemias,
 } from '@/services/glicemiaService';
-
 import type { Glicemia } from '@/services/glicemiaService';
-
 import {
   analisarGlicemias,
   filtrarGlicemias,
 } from '@/services/glicemiaAnaliseService';
-
-import type {
-  PeriodoGlicemia,
-} from '@/services/glicemiaAnaliseService';
-
-// ========================================
-// CORES E CONFIGURAÇÕES
-// ========================================
+import type { PeriodoGlicemia } from '@/services/glicemiaAnaliseService';
 
 const C = {
   bg: '#F4F8F7',
-  white: '#FFFFFF',
-  teal: '#3D8B85',
-  dark: '#273331',
-  gray: '#7E8D89',
-  border: '#C8DEDD',
-  error: '#C0392B',
+  card: '#FFFFFF',
+  primary: '#0E9F8C',
+  primaryDark: '#0E766D',
+  primarySoft: '#E7F8F4',
+  text: '#273331',
+  muted: '#7E8D89',
+  border: '#E0EAE8',
+  danger: '#D94B57',
+  dangerSoft: '#FDE8EA',
+  warning: '#B7791F',
+  warningSoft: '#FFF3D6',
 };
 
 const contextos = [
@@ -73,7 +61,7 @@ const periodos = [
   { texto: 'Todos', valor: 'todos' },
 ] as const;
 
-type Form = {
+type FormEdicao = {
   valor: string;
   data: string;
   horario: string;
@@ -81,7 +69,7 @@ type Form = {
   observacao: string;
 };
 
-const inicial: Form = {
+const formVazio: FormEdicao = {
   valor: '',
   data: '',
   horario: '',
@@ -89,406 +77,212 @@ const inicial: Form = {
   observacao: '',
 };
 
-// ========================================
-// FUNÇÕES AUXILIARES
-// ========================================
-
-function formatarData(valor: string): string {
+function formatarData(valor: string) {
   const numeros = valor.replace(/\D/g, '').slice(0, 8);
-
-  if (numeros.length <= 2) {
-    return numeros;
-  }
-
+  if (numeros.length <= 2) return numeros;
   if (numeros.length <= 4) {
     return `${numeros.slice(0, 2)}/${numeros.slice(2)}`;
   }
-
-  return (
-    `${numeros.slice(0, 2)}/` +
-    `${numeros.slice(2, 4)}/` +
-    numeros.slice(4)
-  );
+  return `${numeros.slice(0, 2)}/${numeros.slice(2, 4)}/${numeros.slice(4)}`;
 }
 
-function formatarHorario(valor: string): string {
+function formatarHorario(valor: string) {
   const numeros = valor.replace(/\D/g, '').slice(0, 4);
-
-  if (numeros.length <= 2) {
-    return numeros;
-  }
-
+  if (numeros.length <= 2) return numeros;
   return `${numeros.slice(0, 2)}:${numeros.slice(2)}`;
 }
 
-function dataValida(valor: string): boolean {
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(valor)) {
-    return false;
-  }
-
+function dataValida(valor: string) {
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(valor)) return false;
   const [dia, mes, ano] = valor.split('/').map(Number);
-
-  if (ano < 1900 || mes < 1 || mes > 12 || dia < 1) {
-    return false;
-  }
-
+  if (ano < 1900 || mes < 1 || mes > 12 || dia < 1) return false;
   return dia <= new Date(ano, mes, 0).getDate();
 }
 
-function horarioValido(valor: string): boolean {
-  if (!/^\d{2}:\d{2}$/.test(valor)) {
-    return false;
-  }
-
+function horarioValido(valor: string) {
+  if (!/^\d{2}:\d{2}$/.test(valor)) return false;
   const [hora, minuto] = valor.split(':').map(Number);
-
-  return (
-    hora >= 0 &&
-    hora <= 23 &&
-    minuto >= 0 &&
-    minuto <= 59
-  );
+  return hora >= 0 && hora <= 23 && minuto >= 0 && minuto <= 59;
 }
 
-function timestampRegistro(registro: Glicemia): number {
+function timestampRegistro(registro: Glicemia) {
   const [dia, mes, ano] = registro.data.split('/').map(Number);
   const [hora, minuto] = registro.horario.split(':').map(Number);
-
-  return new Date(
-    ano,
-    mes - 1,
-    dia,
-    hora || 0,
-    minuto || 0
-  ).getTime();
+  return new Date(ano, mes - 1, dia, hora || 0, minuto || 0).getTime();
 }
 
-function ordenarRegistros(registros: Glicemia[]): Glicemia[] {
+function ordenarRegistros(registros: Glicemia[]) {
   return [...registros].sort(
     (a, b) => timestampRegistro(b) - timestampRegistro(a)
   );
 }
 
-function mostrarMensagem(
-  titulo: string,
-  mensagem: string
-) {
+function mostrarMensagem(titulo: string, mensagem: string) {
   if (Platform.OS === 'web') {
     window.alert(`${titulo}\n\n${mensagem}`);
     return;
   }
-
   Alert.alert(titulo, mensagem);
 }
 
-// ========================================
-// COMPONENTE DO GRÁFICO SVG
-// ========================================
+function classificarValor(valor: number) {
+  if (valor < 70) {
+    return {
+      texto: 'Baixa',
+      cor: C.danger,
+      fundo: C.dangerSoft,
+    };
+  }
 
-function GraficoGlicemia({
-  registros,
-}: {
-  registros: Glicemia[];
-}) {
-  // Guarda o ID do registro, em vez do índice.
-  // Isso evita mostrar outra medição quando os filtros mudam.
-  const [idSelecionado, setIdSelecionado] =
-    useState<string | null>(null);
+  if (valor > 180) {
+    return {
+      texto: 'Elevada',
+      cor: C.warning,
+      fundo: C.warningSoft,
+    };
+  }
 
-  const largura = Math.max(300, registros.length * 65 + 70);
-  const altura = 260;
+  return {
+    texto: 'Registrada',
+    cor: C.primaryDark,
+    fundo: C.primarySoft,
+  };
+}
 
-  const esquerda = 45;
-  const direita = 25;
-  const topo = 35;
-  const baixo = 45;
+function GraficoGlicemia({ registros }: { registros: Glicemia[] }) {
+  const ordem = [...registros].sort(
+    (a, b) => timestampRegistro(a) - timestampRegistro(b)
+  );
 
+  const largura = Math.max(310, ordem.length * 64 + 60);
+  const altura = 220;
+  const esquerda = 42;
+  const direita = 22;
+  const topo = 26;
+  const baixo = 38;
   const areaLargura = largura - esquerda - direita;
   const areaAltura = altura - topo - baixo;
 
-  const valores = registros.map((r) => Number(r.valor));
-
+  const valores = ordem.map((r) => Number(r.valor));
   const menor = Math.min(...valores);
   const maior = Math.max(...valores);
-
   const margem = Math.max(15, (maior - menor) * 0.15);
+  const minimo = Math.max(0, menor - margem);
+  const maximo = maior + margem;
+  const intervalo = Math.max(1, maximo - minimo);
 
-  const minimoEscala = Math.max(0, menor - margem);
-  const maximoEscala = maior + margem;
-
-  const intervalo = Math.max(
-    1,
-    maximoEscala - minimoEscala
-  );
-
-  const pontos = registros.map((registro, indice) => {
+  const pontos = ordem.map((registro, indice) => {
     const x =
-      registros.length === 1
+      ordem.length === 1
         ? esquerda + areaLargura / 2
-        : esquerda +
-          (indice / (registros.length - 1)) * areaLargura;
+        : esquerda + (indice / (ordem.length - 1)) * areaLargura;
 
-    const y =
-      topo +
-      ((maximoEscala - Number(registro.valor)) / intervalo) *
-        areaAltura;
+    const y = topo + ((maximo - Number(registro.valor)) / intervalo) * areaAltura;
 
-    return {
-      x,
-      y,
-      valor: Number(registro.valor),
-      registro,
-      chave: registro.id ?? `${registro.data}-${registro.horario}-${indice}`,
-    };
+    return { x, y, registro };
   });
 
-  const linha = pontos
-    .map((ponto) => `${ponto.x},${ponto.y}`)
-    .join(' ');
-
-  const marcas = Array.from({ length: 5 }, (_, indice) => {
-    const fracao = indice / 4;
-
+  const linha = pontos.map((p) => `${p.x},${p.y}`).join(' ');
+  const marcas = Array.from({ length: 4 }, (_, indice) => {
+    const fracao = indice / 3;
     return {
       y: topo + fracao * areaAltura,
-      valor: maximoEscala - fracao * intervalo,
+      valor: maximo - fracao * intervalo,
     };
   });
 
-  const selecionado = pontos.find(
-    (ponto) => ponto.chave === idSelecionado
-  )?.registro;
-
   return (
-    <View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator
-        style={styles.rolagemGrafico}
-      >
-        <View
-          style={{
-            width: largura,
-            height: altura,
-          }}
-        >
-          <Svg width={largura} height={altura}>
-            {/* Linhas horizontais e escala */}
-
-            {marcas.map((marca, indice) => (
-              <React.Fragment key={`marca-${indice}`}>
-                <Line
-                  x1={esquerda}
-                  y1={marca.y}
-                  x2={largura - direita}
-                  y2={marca.y}
-                  stroke="#E5EFED"
-                  strokeWidth={1}
-                />
-
-                <SvgText
-                  x={esquerda - 7}
-                  y={marca.y + 4}
-                  fill={C.gray}
-                  fontSize={10}
-                  textAnchor="end"
-                >
-                  {marca.valor.toFixed(0)}
-                </SvgText>
-              </React.Fragment>
-            ))}
-
-            {/* Eixos */}
-
-            <Line
-              x1={esquerda}
-              y1={topo}
-              x2={esquerda}
-              y2={topo + areaAltura}
-              stroke={C.border}
-              strokeWidth={1}
-            />
-
-            <Line
-              x1={esquerda}
-              y1={topo + areaAltura}
-              x2={largura - direita}
-              y2={topo + areaAltura}
-              stroke={C.border}
-              strokeWidth={1}
-            />
-
-            {/* Linha das medições */}
-
-            {pontos.length > 1 && (
-              <Polyline
-                points={linha}
-                fill="none"
-                stroke={C.teal}
-                strokeWidth={3}
-                strokeLinejoin="round"
-                strokeLinecap="round"
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <View style={{ width: largura, height: altura }}>
+        <Svg width={largura} height={altura}>
+          {marcas.map((marca, indice) => (
+            <React.Fragment key={`marca-${indice}`}>
+              <Line
+                x1={esquerda}
+                y1={marca.y}
+                x2={largura - direita}
+                y2={marca.y}
+                stroke="#E5EFED"
+                strokeWidth={1}
               />
-            )}
+              <SvgText
+                x={esquerda - 7}
+                y={marca.y + 4}
+                fill={C.muted}
+                fontSize={9}
+                textAnchor="end"
+              >
+                {marca.valor.toFixed(0)}
+              </SvgText>
+            </React.Fragment>
+          ))}
 
-            {/* Pontos e valores */}
-
-            {pontos.map((ponto) => {
-              const ativo = ponto.chave === idSelecionado;
-
-              return (
-                <React.Fragment key={`ponto-${ponto.chave}`}>
-                  <Circle
-                    cx={ponto.x}
-                    cy={ponto.y}
-                    r={ativo ? 8 : 5}
-                    fill={ativo ? '#246B65' : C.teal}
-                    stroke={C.white}
-                    strokeWidth={2}
-                  />
-
-                  <SvgText
-                    x={ponto.x}
-                    y={Math.max(12, ponto.y - 12)}
-                    fill={C.dark}
-                    fontSize={11}
-                    fontWeight="bold"
-                    textAnchor="middle"
-                  >
-                    {ponto.valor}
-                  </SvgText>
-
-                  <SvgText
-                    x={ponto.x}
-                    y={altura - 19}
-                    fill={C.gray}
-                    fontSize={10}
-                    textAnchor="middle"
-                  >
-                    {ponto.registro.data.slice(0, 5)}
-                  </SvgText>
-                </React.Fragment>
-              );
-            })}
-          </Svg>
-
-          {/* Áreas clicáveis sobre os pontos */}
-
-          <View
-            pointerEvents="box-none"
-            style={StyleSheet.absoluteFillObject}
-          >
-            {pontos.map((ponto) => (
-              <Pressable
-                key={`toque-${ponto.chave}`}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  `Ver medição de ${ponto.registro.data}, ` +
-                  `${ponto.valor} mg/dL`
-                }
-                onPress={() =>
-                  setIdSelecionado(ponto.chave)
-                }
-                style={{
-                  position: 'absolute',
-                  left: ponto.x - 20,
-                  top: ponto.y - 20,
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                }}
-              />
-            ))}
-          </View>
-        </View>
-      </ScrollView>
-
-      <Text style={styles.descricaoGrafico}>
-        Toque em um ponto para visualizar os detalhes
-        da medição.
-      </Text>
-
-      {/* DETALHES DO PONTO SELECIONADO */}
-
-      {selecionado && (
-        <View style={styles.detalhesPonto}>
-          <Text style={styles.resumoTitulo}>
-            Detalhes da medição
-          </Text>
-
-          <Text style={styles.infoResumo}>
-            Glicemia: {selecionado.valor} mg/dL
-          </Text>
-
-          <Text style={styles.infoResumo}>
-            Data: {selecionado.data}
-          </Text>
-
-          <Text style={styles.infoResumo}>
-            Horário: {selecionado.horario}
-          </Text>
-
-          <Text style={styles.infoResumo}>
-            Contexto: {selecionado.contexto}
-          </Text>
-
-          {!!selecionado.observacao && (
-            <Text style={styles.infoResumo}>
-              Observação: {selecionado.observacao}
-            </Text>
+          {pontos.length > 1 && (
+            <Polyline
+              points={linha}
+              fill="none"
+              stroke={C.primary}
+              strokeWidth={3}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
           )}
 
-          <TouchableOpacity
-            onPress={() => setIdSelecionado(null)}
-          >
-            <Text style={styles.fecharDetalhes}>
-              Fechar detalhes
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
+          {pontos.map((ponto, indice) => (
+            <React.Fragment key={ponto.registro.id ?? indice}>
+              <Circle
+                cx={ponto.x}
+                cy={ponto.y}
+                r={5}
+                fill={C.primary}
+                stroke={C.card}
+                strokeWidth={2}
+              />
+              <SvgText
+                x={ponto.x}
+                y={Math.max(12, ponto.y - 11)}
+                fill={C.text}
+                fontSize={10}
+                fontWeight="bold"
+                textAnchor="middle"
+              >
+                {ponto.registro.valor}
+              </SvgText>
+              <SvgText
+                x={ponto.x}
+                y={altura - 13}
+                fill={C.muted}
+                fontSize={9}
+                textAnchor="middle"
+              >
+                {ponto.registro.data.slice(0, 5)}
+              </SvgText>
+            </React.Fragment>
+          ))}
+        </Svg>
+      </View>
+    </ScrollView>
   );
 }
 
-// ========================================
-// TELA PRINCIPAL
-// ========================================
-
 export default function GlicoseScreen() {
-  const [registros, setRegistros] = useState<Glicemia[]>([]);
-  const [form, setForm] = useState<Form>(inicial);
-
-  const [editandoId, setEditandoId] = useState<string | null>(
-    null
-  );
-
-  const [mostrarFormulario, setMostrarFormulario] =
-    useState(false);
-
-  const [carregando, setCarregando] = useState(true);
-  const [salvando, setSalvando] = useState(false);
-  const [excluindo, setExcluindo] = useState(false);
+  const router = useRouter();
 
   const [usuario, setUsuario] = useState<User | null>(null);
+  const [registros, setRegistros] = useState<Glicemia[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
 
-  // ========================================
-  // FILTROS E ANÁLISE
-  // ========================================
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormEdicao>(formVazio);
 
   const [periodoGrafico, setPeriodoGrafico] =
     useState<PeriodoGlicemia>('todos');
-
-  const [contextoGrafico, setContextoGrafico] =
-    useState('Todos');
+  const [contextoGrafico, setContextoGrafico] = useState('Todos');
 
   const registrosFiltrados = useMemo(
-    () =>
-      filtrarGlicemias(
-        registros,
-        periodoGrafico,
-        contextoGrafico
-      ),
+    () => filtrarGlicemias(registros, periodoGrafico, contextoGrafico),
     [registros, periodoGrafico, contextoGrafico]
   );
 
@@ -497,114 +291,41 @@ export default function GlicoseScreen() {
     [registrosFiltrados]
   );
 
-  // Exibe o aviso apenas se realmente existirem
-  // medições de contextos diferentes.
-  const possuiContextosDiferentes = useMemo(() => {
-    const contextosEncontrados = new Set(
-      registrosFiltrados.map(
-        (registro) => registro.contexto
-      )
-    );
+  const ultimaMedicao = registros[0] ?? null;
 
-    return contextosEncontrados.size > 1;
-  }, [registrosFiltrados]);
+  const carregarRegistros = useCallback(async (userId: string) => {
+    setCarregando(true);
 
-  // ========================================
-  // FORMULÁRIO
-  // ========================================
+    try {
+      const dados = await listarGlicemias(userId);
+      if (auth.currentUser?.uid !== userId) return;
+      setRegistros(ordenarRegistros(dados));
+    } catch (error) {
+      console.error('Erro ao carregar glicemias:', error);
+      setRegistros([]);
+      mostrarMensagem('Erro', 'Não foi possível carregar as medições.');
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
 
-  function alterarCampo(campo: keyof Form, valor: string) {
-    setForm((anterior) => ({
-      ...anterior,
-      [campo]: valor,
-    }));
-  }
-
-  function abrirNovo() {
-    setForm(inicial);
-    setEditandoId(null);
-    setMostrarFormulario(true);
-  }
-
-  function abrirEdicao(registro: Glicemia) {
-    if (!registro.id) return;
-
-    setForm({
-      valor: String(registro.valor),
-      data: registro.data,
-      horario: registro.horario,
-      contexto: registro.contexto,
-      observacao: registro.observacao ?? '',
-    });
-
-    setEditandoId(registro.id);
-    setMostrarFormulario(true);
-  }
-
-  function cancelar() {
-    setMostrarFormulario(false);
-    setEditandoId(null);
-    setForm(inicial);
-  }
-
-  // ========================================
-  // CARREGAMENTO DO FIREBASE
-  // ========================================
-
-  const carregarRegistros = useCallback(
-    async (userId: string): Promise<void> => {
-      setCarregando(true);
-
-      try {
-        const dados = await listarGlicemias(userId);
-
-        if (auth.currentUser?.uid !== userId) {
-          return;
-        }
-
-        setRegistros(ordenarRegistros(dados));
-      } catch (error) {
-        console.error(
-          'Erro ao carregar glicemias:',
-          error
-        );
-
-        if (auth.currentUser?.uid === userId) {
-          setRegistros([]);
-
-          mostrarMensagem(
-            'Erro',
-            'Não foi possível carregar as medições.'
-          );
-        }
-      } finally {
-        setCarregando(false);
-      }
-    },
-    []
-  );
-
-  // Aguarda a autenticação ser restaurada
-  // e atualiza o histórico ao voltar à tela.
   useFocusEffect(
     useCallback(() => {
       let ativo = true;
 
-      const unsubscribe = onAuthStateChanged(
-        auth,
-        async (usuarioAtual) => {
-          if (!ativo) return;
+      const unsubscribe = onAuthStateChanged(auth, async (usuarioAtual) => {
+        if (!ativo) return;
 
-          setUsuario(usuarioAtual);
+        setUsuario(usuarioAtual);
 
-          if (usuarioAtual) {
-            await carregarRegistros(usuarioAtual.uid);
-          } else {
-            setRegistros([]);
-            setCarregando(false);
-          }
+        if (!usuarioAtual) {
+          setRegistros([]);
+          setCarregando(false);
+          return;
         }
-      );
+
+        await carregarRegistros(usuarioAtual.uid);
+      });
 
       return () => {
         ativo = false;
@@ -613,828 +334,1055 @@ export default function GlicoseScreen() {
     }, [carregarRegistros])
   );
 
-  // ========================================
-  // SALVAR / EDITAR
-  // ========================================
+  function abrirEdicao(registro: Glicemia) {
+    if (!registro.id) return;
 
-  async function salvar() {
+    setEditandoId(registro.id);
+    setForm({
+      valor: String(registro.valor),
+      data: registro.data,
+      horario: registro.horario,
+      contexto: registro.contexto,
+      observacao: registro.observacao ?? '',
+    });
+  }
+
+  function cancelarEdicao() {
+    setEditandoId(null);
+    setForm(formVazio);
+  }
+
+  function alterarCampo(campo: keyof FormEdicao, valor: string) {
+    setForm((anterior) => ({ ...anterior, [campo]: valor }));
+  }
+
+  async function salvarEdicao() {
     const userId = auth.currentUser?.uid;
+    if (!userId || !editandoId) return;
 
-    if (!userId) {
-      mostrarMensagem(
-        'Atenção',
-        'Faça login para registrar sua glicemia.'
-      );
-      return;
-    }
+    const valor = Number(form.valor.trim().replace(',', '.'));
 
-    const valor = Number(
-      form.valor.trim().replace(',', '.')
-    );
-
-    if (
-      !form.valor.trim() ||
-      !Number.isFinite(valor) ||
-      valor <= 0
-    ) {
+    if (!Number.isFinite(valor) || valor < 20 || valor > 600) {
       mostrarMensagem(
         'Valor inválido',
-        'Informe um valor de glicemia válido.'
+        'Informe um valor de glicose entre 20 e 600 mg/dL.'
       );
       return;
     }
 
     if (!dataValida(form.data)) {
-      mostrarMensagem(
-        'Data inválida',
-        'Informe uma data válida no formato DD/MM/AAAA.'
-      );
+      mostrarMensagem('Data inválida', 'Informe uma data válida no formato DD/MM/AAAA.');
       return;
     }
 
     if (!horarioValido(form.horario)) {
-      mostrarMensagem(
-        'Horário inválido',
-        'Informe um horário válido no formato HH:MM.'
-      );
+      mostrarMensagem('Horário inválido', 'Informe um horário válido no formato HH:MM.');
       return;
     }
 
     if (!form.contexto) {
-      mostrarMensagem(
-        'Campo obrigatório',
-        'Selecione o contexto da medição.'
-      );
+      mostrarMensagem('Campo obrigatório', 'Selecione o contexto da medição.');
       return;
     }
-
-    const dados = {
-      valor,
-      data: form.data,
-      horario: form.horario,
-      contexto: form.contexto,
-      observacao: form.observacao,
-    };
-
-    const estavaEditando = editandoId !== null;
 
     setSalvando(true);
 
     try {
-      if (editandoId) {
-        await atualizarGlicemia(
-          editandoId,
-          userId,
-          dados
-        );
-      } else {
-        await criarGlicemia({
-          ...dados,
-          userId,
-        });
-      }
+      await atualizarGlicemia(editandoId, userId, {
+        valor,
+        data: form.data,
+        horario: form.horario,
+        contexto: form.contexto,
+        observacao: form.observacao,
+      });
 
-      cancelar();
-
-      // Atualiza histórico, gráfico e feedback.
+      cancelarEdicao();
       await carregarRegistros(userId);
-
-      mostrarMensagem(
-        'Sucesso',
-        estavaEditando
-          ? 'Medição atualizada com sucesso!'
-          : 'Medição registrada com sucesso!'
-      );
+      mostrarMensagem('Sucesso', 'Medição atualizada com sucesso.');
     } catch (error) {
-      console.error(
-        'Erro ao salvar glicemia:',
-        error
-      );
-
-      mostrarMensagem(
-        'Erro',
-        'Não foi possível salvar a medição.'
-      );
+      console.error('Erro ao atualizar glicemia:', error);
+      mostrarMensagem('Erro', 'Não foi possível atualizar a medição.');
     } finally {
       setSalvando(false);
     }
   }
 
-  // ========================================
-  // EXCLUSÃO
-  // ========================================
-
   async function executarExclusao(registro: Glicemia) {
     const userId = auth.currentUser?.uid;
+    if (!userId || !registro.id) return;
 
-    if (!userId || !registro.id || excluindo) {
-      return;
-    }
-
-    setExcluindo(true);
+    setExcluindoId(registro.id);
 
     try {
       await excluirGlicemia(registro.id, userId);
-
+      if (editandoId === registro.id) cancelarEdicao();
       await carregarRegistros(userId);
-
-      mostrarMensagem(
-        'Sucesso',
-        'Medição excluída com sucesso.'
-      );
+      mostrarMensagem('Sucesso', 'Medição excluída com sucesso.');
     } catch (error) {
-      console.error(
-        'Erro ao excluir glicemia:',
-        error
-      );
-
-      mostrarMensagem(
-        'Erro',
-        'Não foi possível excluir a medição.'
-      );
+      console.error('Erro ao excluir glicemia:', error);
+      mostrarMensagem('Erro', 'Não foi possível excluir a medição.');
     } finally {
-      setExcluindo(false);
+      setExcluindoId(null);
     }
   }
 
   function confirmarExclusao(registro: Glicemia) {
     if (Platform.OS === 'web') {
-      const confirmar = window.confirm(
-        'Deseja realmente excluir esta medição?'
-      );
-
-      if (confirmar) {
+      if (window.confirm('Deseja realmente excluir esta medição?')) {
         void executarExclusao(registro);
       }
-
       return;
     }
 
-    Alert.alert(
-      'Excluir medição',
-      'Deseja realmente excluir este registro?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Excluir',
-          style: 'destructive',
-          onPress: () => {
-            void executarExclusao(registro);
-          },
-        },
-      ]
-    );
+    Alert.alert('Excluir medição', 'Deseja realmente excluir este registro?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Excluir',
+        style: 'destructive',
+        onPress: () => void executarExclusao(registro),
+      },
+    ]);
   }
 
-  // ========================================
-  // INTERFACE
-  // ========================================
-
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.conteudo}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={styles.titulo}>
-        Minha glicemia
-      </Text>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.titulo}>Glicose</Text>
+              <Text style={styles.descricao}>
+                Acompanhe suas medições de glicemia.
+              </Text>
+            </View>
 
-      <Text style={styles.descricao}>
-        Acompanhe e registre suas medições de glicose.
-      </Text>
-
-      {!usuario && !carregando && (
-        <Text style={styles.aviso}>
-          Faça login para visualizar e registrar medições.
-        </Text>
-      )}
-
-      {/* =====================================
-          CADASTRO E EDIÇÃO
-      ===================================== */}
-
-      {!mostrarFormulario ? (
-        <TouchableOpacity
-          style={[
-            styles.botao,
-            !usuario && styles.desabilitado,
-          ]}
-          onPress={abrirNovo}
-          disabled={!usuario}
-        >
-          <Text style={styles.botaoTexto}>
-            + Registrar nova medição
-          </Text>
-        </TouchableOpacity>
-      ) : (
-        <View style={styles.formulario}>
-          <Text style={styles.subtitulo}>
-            {editandoId
-              ? 'Editar medição'
-              : 'Nova medição'}
-          </Text>
-
-          <Text style={styles.label}>
-            Glicemia (mg/dL)
-          </Text>
-
-          <TextInput
-            style={styles.input}
-            value={form.valor}
-            onChangeText={(valor) =>
-              alterarCampo('valor', valor)
-            }
-            keyboardType="decimal-pad"
-            placeholder="Ex.: 105"
-          />
-
-          <Text style={styles.label}>
-            Data
-          </Text>
-
-          <TextInput
-            style={styles.input}
-            value={form.data}
-            onChangeText={(valor) =>
-              alterarCampo(
-                'data',
-                formatarData(valor)
-              )
-            }
-            keyboardType="numeric"
-            placeholder="DD/MM/AAAA"
-            maxLength={10}
-          />
-
-          <Text style={styles.label}>
-            Horário
-          </Text>
-
-          <TextInput
-            style={styles.input}
-            value={form.horario}
-            onChangeText={(valor) =>
-              alterarCampo(
-                'horario',
-                formatarHorario(valor)
-              )
-            }
-            keyboardType="numeric"
-            placeholder="HH:MM"
-            maxLength={5}
-          />
-
-          <Text style={styles.label}>
-            Contexto da medição
-          </Text>
-
-          <View style={styles.contextos}>
-            {contextos.map((item) => (
-              <TouchableOpacity
-                key={item}
-                style={[
-                  styles.contextoBotao,
-                  form.contexto === item &&
-                    styles.contextoSelecionado,
-                ]}
-                onPress={() =>
-                  alterarCampo('contexto', item)
-                }
-              >
-                <Text
-                  style={[
-                    styles.contextoTexto,
-                    form.contexto === item &&
-                      styles.contextoTextoSelecionado,
-                  ]}
-                >
-                  {item}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <View style={styles.headerIcon}>
+              <Ionicons name="water-outline" size={22} color={C.primaryDark} />
+            </View>
           </View>
 
-          <Text style={styles.label}>
-            Observação (opcional)
-          </Text>
-
-          <TextInput
-            style={[
-              styles.input,
-              styles.observacao,
-            ]}
-            value={form.observacao}
-            onChangeText={(valor) =>
-              alterarCampo('observacao', valor)
-            }
-            placeholder="Adicione uma observação"
-            multiline
-          />
-
-          <TouchableOpacity
-            style={[
-              styles.botao,
-              salvando && styles.desabilitado,
-            ]}
-            onPress={salvar}
-            disabled={salvando}
-          >
-            <Text style={styles.botaoTexto}>
-              {salvando
-                ? 'Salvando...'
-                : editandoId
-                  ? 'Salvar alterações'
-                  : 'Salvar medição'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={cancelar}
-            disabled={salvando}
-          >
-            <Text style={styles.cancelar}>
-              Cancelar
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* =====================================
-          GRÁFICO DE EVOLUÇÃO
-      ===================================== */}
-
-      {usuario && (
-        <View style={styles.graficoCard}>
-          <Text style={styles.subtitulo}>
-            Evolução da glicemia
-          </Text>
-
-          <Text style={styles.descricaoGrafico}>
-            Acompanhe os valores das suas medições ao
-            longo do tempo.
-          </Text>
-
-          {/* FILTRO POR PERÍODO */}
-
-          <Text style={styles.label}>
-            Período
-          </Text>
-
-          <View style={styles.contextos}>
-            {periodos.map((item) => (
-              <TouchableOpacity
-                key={item.texto}
-                style={[
-                  styles.contextoBotao,
-                  periodoGrafico === item.valor &&
-                    styles.contextoSelecionado,
-                ]}
-                onPress={() =>
-                  setPeriodoGrafico(item.valor)
-                }
-              >
-                <Text
-                  style={[
-                    styles.contextoTexto,
-                    periodoGrafico === item.valor &&
-                      styles.contextoTextoSelecionado,
-                  ]}
-                >
-                  {item.texto}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* FILTRO POR CONTEXTO */}
-
-          <Text style={styles.label}>
-            Contexto
-          </Text>
-
-          <View style={styles.contextos}>
-            {['Todos', ...contextos].map((item) => (
-              <TouchableOpacity
-                key={item}
-                style={[
-                  styles.contextoBotao,
-                  contextoGrafico === item &&
-                    styles.contextoSelecionado,
-                ]}
-                onPress={() =>
-                  setContextoGrafico(item)
-                }
-              >
-                <Text
-                  style={[
-                    styles.contextoTexto,
-                    contextoGrafico === item &&
-                      styles.contextoTextoSelecionado,
-                  ]}
-                >
-                  {item}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* GRÁFICO INTERATIVO */}
+          {!usuario && !carregando && (
+            <View style={styles.avisoCard}>
+              <Text style={styles.avisoTexto}>
+                Faça login para visualizar e registrar medições.
+              </Text>
+            </View>
+          )}
 
           {carregando ? (
-            <ActivityIndicator
-              color={C.teal}
-              size="large"
-            />
-          ) : registrosFiltrados.length === 0 ? (
-            <Text style={styles.vazio}>
-              Nenhuma medição encontrada para os
-              filtros selecionados.
-            </Text>
-          ) : (
-            <GraficoGlicemia
-              registros={registrosFiltrados}
-            />
-          )}
-
-          {/* RESUMO E FEEDBACK */}
-
-          {!carregando && (
-            <View style={styles.resumo}>
-              <Text style={styles.resumoTitulo}>
-                Resumo das medições
-              </Text>
-
-              <Text style={styles.infoResumo}>
-                Quantidade: {analise.quantidade}
-              </Text>
-
-              <Text style={styles.infoResumo}>
-                Média:{' '}
-                {analise.media === null
-                  ? '—'
-                  : `${analise.media.toFixed(1)} mg/dL`}
-              </Text>
-
-              <Text style={styles.infoResumo}>
-                Menor valor:{' '}
-                {analise.menorValor === null
-                  ? '—'
-                  : `${analise.menorValor} mg/dL`}
-              </Text>
-
-              <Text style={styles.infoResumo}>
-                Maior valor:{' '}
-                {analise.maiorValor === null
-                  ? '—'
-                  : `${analise.maiorValor} mg/dL`}
-              </Text>
-
-              <Text style={styles.resumoTitulo}>
-                Análise das medições
-              </Text>
-
-              {contextoGrafico === 'Todos' &&
-                possuiContextosDiferentes && (
-                  <Text style={styles.avisoAnalise}>
-                    As medições incluem diferentes
-                    contextos. Para uma comparação mais
-                    consistente, selecione um contexto
-                    específico.
-                  </Text>
-                )}
-
-              <Text style={styles.infoResumo}>
-                {analise.feedback}
-              </Text>
-
-              <Text style={styles.nota}>
-                Esta análise é informativa e não
-                substitui a avaliação de um
-                profissional de saúde.
-              </Text>
+            <View style={styles.loading}>
+              <ActivityIndicator color={C.primary} />
+              <Text style={styles.loadingTexto}>Carregando medições...</Text>
             </View>
+          ) : (
+            <>
+              <View style={styles.ultimaCard}>
+                <View style={styles.cardTopRow}>
+                  <View>
+                    <Text style={styles.cardLabel}>Última medição</Text>
+                    <Text style={styles.cardDescricao}>
+                      Registro mais recente de glicemia
+                    </Text>
+                  </View>
+
+                  {ultimaMedicao && (
+                    <View
+                      style={[
+                        styles.statusTag,
+                        { backgroundColor: classificarValor(ultimaMedicao.valor).fundo },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusTagTexto,
+                          { color: classificarValor(ultimaMedicao.valor).cor },
+                        ]}
+                      >
+                        {classificarValor(ultimaMedicao.valor).texto}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {ultimaMedicao ? (
+                  <>
+                    <View style={styles.valorRow}>
+                      <Text style={styles.valorPrincipal}>{ultimaMedicao.valor}</Text>
+                      <Text style={styles.unidade}>mg/dL</Text>
+                    </View>
+
+                    <View style={styles.metaRow}>
+                      <Ionicons name="time-outline" size={15} color={C.muted} />
+                      <Text style={styles.metaTexto}>
+                        {ultimaMedicao.data} • {ultimaMedicao.horario}
+                      </Text>
+                    </View>
+
+                    <View style={styles.contextoAtual}>
+                      <Ionicons name="restaurant-outline" size={15} color={C.primaryDark} />
+                      <Text style={styles.contextoAtualTexto}>
+                        {ultimaMedicao.contexto}
+                      </Text>
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.estadoVazioInterno}>
+                    <Ionicons name="water-outline" size={28} color="#B8C4C1" />
+                    <Text style={styles.estadoVazioTitulo}>Nenhuma medição ainda</Text>
+                    <Text style={styles.estadoVazioTexto}>
+                      Registre sua primeira glicemia para começar o acompanhamento.
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <Pressable
+                style={styles.registrarCard}
+                onPress={() =>
+                  router.push({
+                    pathname: '/novo-registro',
+                    params: { tipo: 'glicose' },
+                  })
+                }
+                disabled={!usuario}
+              >
+                <View style={styles.registrarIcone}>
+                  <Ionicons name="add" size={24} color={C.primary} />
+                </View>
+
+                <View style={styles.registrarConteudo}>
+                  <Text style={styles.registrarTitulo}>Registrar glicose</Text>
+                  <Text style={styles.registrarDescricao}>
+                    Adicione uma nova medição ao seu histórico.
+                  </Text>
+                </View>
+
+                <Ionicons name="chevron-forward" size={22} color={C.primaryDark} />
+              </Pressable>
+
+              <View style={styles.evolucaoCard}>
+                <Text style={styles.secaoTitulo}>Evolução da glicemia</Text>
+                <Text style={styles.secaoDescricao}>
+                  Filtre suas medições por período e contexto.
+                </Text>
+
+                <Text style={styles.filtroLabel}>Período</Text>
+                <View style={styles.filtrosWrap}>
+                  {periodos.map((item) => (
+                    <Pressable
+                      key={item.texto}
+                      style={[
+                        styles.filtroBotao,
+                        periodoGrafico === item.valor && styles.filtroBotaoAtivo,
+                      ]}
+                      onPress={() => setPeriodoGrafico(item.valor)}
+                    >
+                      <Text
+                        style={[
+                          styles.filtroTexto,
+                          periodoGrafico === item.valor && styles.filtroTextoAtivo,
+                        ]}
+                      >
+                        {item.texto}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Text style={styles.filtroLabel}>Contexto</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.contextosScroll}
+                >
+                  {['Todos', ...contextos].map((item) => (
+                    <Pressable
+                      key={item}
+                      style={[
+                        styles.filtroBotao,
+                        contextoGrafico === item && styles.filtroBotaoAtivo,
+                      ]}
+                      onPress={() => setContextoGrafico(item)}
+                    >
+                      <Text
+                        style={[
+                          styles.filtroTexto,
+                          contextoGrafico === item && styles.filtroTextoAtivo,
+                        ]}
+                      >
+                        {item}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+
+                {registrosFiltrados.length === 0 ? (
+                  <View style={styles.graficoVazio}>
+                    <Ionicons name="analytics-outline" size={30} color="#B8C4C1" />
+                    <Text style={styles.estadoVazioTexto}>
+                      Nenhuma medição encontrada para os filtros selecionados.
+                    </Text>
+                  </View>
+                ) : (
+                  <GraficoGlicemia registros={registrosFiltrados} />
+                )}
+              </View>
+
+              <View style={styles.resumoCard}>
+                <Text style={styles.secaoTitulo}>Resumo das medições</Text>
+
+                <View style={styles.resumoGrid}>
+                  <View style={styles.resumoItem}>
+                    <Text style={styles.resumoLabel}>Quantidade</Text>
+                    <Text style={styles.resumoValor}>{analise.quantidade}</Text>
+                  </View>
+
+                  <View style={styles.resumoItem}>
+                    <Text style={styles.resumoLabel}>Média</Text>
+                    <Text style={styles.resumoValor}>
+                      {analise.media === null ? '—' : analise.media.toFixed(1)}
+                    </Text>
+                    {analise.media !== null && <Text style={styles.resumoUnidade}>mg/dL</Text>}
+                  </View>
+
+                  <View style={styles.resumoItem}>
+                    <Text style={styles.resumoLabel}>Menor</Text>
+                    <Text style={styles.resumoValor}>
+                      {analise.menorValor ?? '—'}
+                    </Text>
+                    {analise.menorValor !== null && <Text style={styles.resumoUnidade}>mg/dL</Text>}
+                  </View>
+
+                  <View style={styles.resumoItem}>
+                    <Text style={styles.resumoLabel}>Maior</Text>
+                    <Text style={styles.resumoValor}>
+                      {analise.maiorValor ?? '—'}
+                    </Text>
+                    {analise.maiorValor !== null && <Text style={styles.resumoUnidade}>mg/dL</Text>}
+                  </View>
+                </View>
+
+                {analise.quantidade > 0 && (
+                  <View style={styles.feedbackBox}>
+                    <Ionicons name="information-circle-outline" size={19} color={C.primaryDark} />
+                    <Text style={styles.feedbackTexto}>{analise.feedback}</Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.historicoHeader}>
+                <Text style={styles.secaoTitulo}>Medições recentes</Text>
+                <Text style={styles.historicoContagem}>
+                  {registros.length} {registros.length === 1 ? 'registro' : 'registros'}
+                </Text>
+              </View>
+
+              {registros.length === 0 ? (
+                <View style={styles.historicoVazio}>
+                  <Ionicons name="document-text-outline" size={30} color="#B8C4C1" />
+                  <Text style={styles.estadoVazioTitulo}>Seu histórico está vazio</Text>
+                  <Text style={styles.estadoVazioTexto}>
+                    As novas medições aparecerão aqui.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.historicoLista}>
+                  {registros.map((registro) => {
+                    const status = classificarValor(registro.valor);
+
+                    return (
+                      <View key={registro.id} style={styles.registroCard}>
+                        <View style={styles.registroTopo}>
+                          <View>
+                            <View style={styles.registroValorRow}>
+                              <Text style={styles.registroValor}>{registro.valor}</Text>
+                              <Text style={styles.registroUnidade}>mg/dL</Text>
+                            </View>
+                            <Text style={styles.registroData}>
+                              {registro.data} • {registro.horario}
+                            </Text>
+                          </View>
+
+                          <View style={[styles.statusTag, { backgroundColor: status.fundo }]}>
+                            <Text style={[styles.statusTagTexto, { color: status.cor }]}>
+                              {status.texto}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.registroContextoRow}>
+                          <Ionicons name="restaurant-outline" size={14} color={C.muted} />
+                          <Text style={styles.registroContexto}>{registro.contexto}</Text>
+                        </View>
+
+                        {!!registro.observacao && (
+                          <Text style={styles.registroObservacao}>{registro.observacao}</Text>
+                        )}
+
+                        <View style={styles.acoesRow}>
+                          <Pressable
+                            style={styles.acaoEditar}
+                            onPress={() => abrirEdicao(registro)}
+                          >
+                            <Ionicons name="create-outline" size={17} color={C.primaryDark} />
+                            <Text style={styles.acaoEditarTexto}>Editar</Text>
+                          </Pressable>
+
+                          <Pressable
+                            style={styles.acaoExcluir}
+                            onPress={() => confirmarExclusao(registro)}
+                            disabled={excluindoId === registro.id}
+                          >
+                            <Ionicons name="trash-outline" size={17} color={C.danger} />
+                            <Text style={styles.acaoExcluirTexto}>
+                              {excluindoId === registro.id ? 'Excluindo...' : 'Excluir'}
+                            </Text>
+                          </Pressable>
+                        </View>
+
+                        {editandoId === registro.id && (
+                          <View style={styles.edicaoInline}>
+                            <View style={styles.edicaoHeader}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.edicaoTitulo}>Editar medição</Text>
+                                <Text style={styles.edicaoDescricao}>
+                                  Altere os dados e salve para atualizar o histórico.
+                                </Text>
+                              </View>
+
+                              <Pressable
+                                style={styles.fecharEdicao}
+                                onPress={cancelarEdicao}
+                                accessibilityLabel="Cancelar edição"
+                              >
+                                <Ionicons name="close" size={20} color={C.muted} />
+                              </Pressable>
+                            </View>
+
+                            <Text style={styles.label}>Glicemia (mg/dL)</Text>
+                            <TextInput
+                              value={form.valor}
+                              onChangeText={(valor) =>
+                                alterarCampo('valor', valor.replace(/\D/g, '').slice(0, 3))
+                              }
+                              keyboardType="numeric"
+                              style={styles.input}
+                              maxLength={3}
+                            />
+
+                            <View style={styles.camposRow}>
+                              <View style={styles.campoMetade}>
+                                <Text style={styles.label}>Data</Text>
+                                <TextInput
+                                  value={form.data}
+                                  onChangeText={(valor) =>
+                                    alterarCampo('data', formatarData(valor))
+                                  }
+                                  keyboardType="numeric"
+                                  style={styles.input}
+                                  maxLength={10}
+                                  placeholder="DD/MM/AAAA"
+                                  placeholderTextColor="#A9B5B2"
+                                />
+                              </View>
+
+                              <View style={styles.campoMetade}>
+                                <Text style={styles.label}>Horário</Text>
+                                <TextInput
+                                  value={form.horario}
+                                  onChangeText={(valor) =>
+                                    alterarCampo('horario', formatarHorario(valor))
+                                  }
+                                  keyboardType="numeric"
+                                  style={styles.input}
+                                  maxLength={5}
+                                  placeholder="HH:MM"
+                                  placeholderTextColor="#A9B5B2"
+                                />
+                              </View>
+                            </View>
+
+                            <Text style={styles.label}>Contexto</Text>
+                            <View style={styles.filtrosWrap}>
+                              {contextos.map((item) => (
+                                <Pressable
+                                  key={item}
+                                  style={[
+                                    styles.filtroBotao,
+                                    form.contexto === item && styles.filtroBotaoAtivo,
+                                  ]}
+                                  onPress={() => alterarCampo('contexto', item)}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.filtroTexto,
+                                      form.contexto === item && styles.filtroTextoAtivo,
+                                    ]}
+                                  >
+                                    {item}
+                                  </Text>
+                                </Pressable>
+                              ))}
+                            </View>
+
+                            <Text style={styles.label}>Observação</Text>
+                            <TextInput
+                              value={form.observacao}
+                              onChangeText={(valor) => alterarCampo('observacao', valor)}
+                              style={[styles.input, styles.observacaoInput]}
+                              multiline
+                              textAlignVertical="top"
+                              placeholder="Opcional"
+                              placeholderTextColor="#A9B5B2"
+                            />
+
+                            <View style={styles.edicaoBotoes}>
+                              <Pressable
+                                style={styles.botaoSecundario}
+                                onPress={cancelarEdicao}
+                                disabled={salvando}
+                              >
+                                <Text style={styles.botaoSecundarioTexto}>Cancelar</Text>
+                              </Pressable>
+
+                              <Pressable
+                                style={[
+                                  styles.botaoPrimarioInline,
+                                  salvando && styles.desabilitado,
+                                ]}
+                                onPress={salvarEdicao}
+                                disabled={salvando}
+                              >
+                                <Text style={styles.botaoPrimarioTexto}>
+                                  {salvando ? 'Salvando...' : 'Salvar alterações'}
+                                </Text>
+                              </Pressable>
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </>
           )}
         </View>
-      )}
-
-      {/* =====================================
-          HISTÓRICO DE MEDIÇÕES
-      ===================================== */}
-
-      <Text style={styles.subtitulo}>
-        Histórico de medições
-      </Text>
-
-      {carregando ? (
-        <ActivityIndicator
-          size="large"
-          color={C.teal}
-        />
-      ) : registros.length === 0 ? (
-        <Text style={styles.vazio}>
-          Nenhuma medição registrada ainda.
-        </Text>
-      ) : (
-        registros.map((registro) => (
-          <View
-            key={registro.id}
-            style={styles.registro}
-          >
-            <Text style={styles.valor}>
-              {registro.valor} mg/dL
-            </Text>
-
-            <Text style={styles.info}>
-              {registro.data} às {registro.horario}
-            </Text>
-
-            <Text style={styles.info}>
-              {registro.contexto}
-            </Text>
-
-            {!!registro.observacao && (
-              <Text style={styles.info}>
-                {registro.observacao}
-              </Text>
-            )}
-
-            <View style={styles.acoes}>
-              <TouchableOpacity
-                onPress={() =>
-                  abrirEdicao(registro)
-                }
-              >
-                <Text style={styles.editar}>
-                  Editar
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() =>
-                  confirmarExclusao(registro)
-                }
-                disabled={excluindo}
-              >
-                <Text style={styles.excluir}>
-                  {excluindo
-                    ? 'Excluindo...'
-                    : 'Excluir'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))
-      )}
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
-
-// ========================================
-// ESTILOS
-// ========================================
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.bg,
   },
-
-  conteudo: {
-    padding: 20,
-    paddingBottom: 50,
+  scrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+  },
+  content: {
     width: '100%',
-    maxWidth: 600,
-    alignSelf: 'center',
+    maxWidth: 520,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 36,
   },
-
-  titulo: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: C.dark,
-  },
-
-  descricao: {
-    fontSize: 14,
-    color: C.gray,
-    marginTop: 6,
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 20,
   },
-
-  subtitulo: {
-    fontSize: 18,
+  titulo: {
+    fontSize: 25,
     fontWeight: '700',
-    color: C.dark,
-    marginBottom: 12,
-    marginTop: 16,
+    color: C.text,
   },
-
-  botao: {
-    backgroundColor: C.teal,
-    padding: 15,
-    borderRadius: 14,
+  descricao: {
+    fontSize: 13,
+    color: C.muted,
+    marginTop: 4,
+  },
+  headerIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: C.primarySoft,
     alignItems: 'center',
-    marginVertical: 12,
+    justifyContent: 'center',
   },
-
-  botaoTexto: {
-    color: C.white,
+  loading: {
+    minHeight: 240,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  loadingTexto: {
+    color: C.muted,
+    fontSize: 13,
+  },
+  avisoCard: {
+    backgroundColor: C.dangerSoft,
+    padding: 12,
+    borderRadius: 14,
+    marginBottom: 12,
+  },
+  avisoTexto: {
+    color: C.danger,
+    fontSize: 13,
+  },
+  ultimaCard: {
+    backgroundColor: C.card,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#E8EFED',
+    padding: 18,
+    marginBottom: 12,
+  },
+  cardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  cardLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: C.text,
+  },
+  cardDescricao: {
+    fontSize: 11,
+    color: C.muted,
+    marginTop: 3,
+  },
+  statusTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  statusTagTexto: {
+    fontSize: 10,
     fontWeight: '700',
   },
-
-  formulario: {
-    backgroundColor: C.white,
-    borderRadius: 16,
+  valorRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 5,
+    marginTop: 18,
+  },
+  valorPrincipal: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: C.primary,
+  },
+  unidade: {
+    fontSize: 12,
+    color: C.muted,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  metaTexto: {
+    fontSize: 12,
+    color: C.muted,
+  },
+  contextoAtual: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: C.primarySoft,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+  },
+  contextoAtualTexto: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: C.primaryDark,
+  },
+  estadoVazioInterno: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  estadoVazioTitulo: {
+    color: C.text,
+    fontWeight: '700',
+    fontSize: 14,
+    marginTop: 8,
+  },
+  estadoVazioTexto: {
+    color: C.muted,
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: 5,
+  },
+  registrarCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.card,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#E8EFED',
     padding: 16,
     marginBottom: 12,
   },
-
+  registrarIcone: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: C.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  registrarConteudo: {
+    flex: 1,
+  },
+  registrarTitulo: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: C.text,
+  },
+  registrarDescricao: {
+    fontSize: 11,
+    color: C.muted,
+    marginTop: 3,
+  },
+  edicaoCard: {
+    backgroundColor: C.card,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 18,
+    marginBottom: 12,
+  },
+  edicaoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  secaoTitulo: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: C.text,
+  },
+  secaoDescricao: {
+    fontSize: 12,
+    color: C.muted,
+    marginTop: 4,
+    marginBottom: 12,
+  },
   label: {
-    fontSize: 13,
-    color: C.dark,
+    fontSize: 12,
     fontWeight: '600',
+    color: '#52615E',
     marginTop: 12,
     marginBottom: 6,
   },
-
   input: {
+    minHeight: 46,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: C.border,
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
-    color: C.dark,
-    backgroundColor: C.white,
+    backgroundColor: '#F8FAFA',
+    paddingHorizontal: 12,
+    fontSize: 13,
+    color: C.text,
   },
-
-  observacao: {
-    minHeight: 75,
-    textAlignVertical: 'top',
+  camposRow: {
+    flexDirection: 'row',
+    gap: 10,
   },
-
-  contextos: {
+  campoMetade: {
+    flex: 1,
+  },
+  observacaoInput: {
+    minHeight: 80,
+    paddingTop: 12,
+  },
+  botaoPrimario: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: C.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  botaoPrimarioTexto: {
+    color: C.card,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  desabilitado: {
+    opacity: 0.55,
+  },
+  evolucaoCard: {
+    backgroundColor: C.card,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#E8EFED',
+    padding: 18,
+    marginBottom: 12,
+  },
+  filtroLabel: {
+    fontSize: 11,
+    color: C.muted,
+    fontWeight: '600',
+    marginTop: 12,
+    marginBottom: 7,
+  },
+  filtrosWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 8,
   },
-
-  contextoBotao: {
-    padding: 10,
+  contextosScroll: {
+    gap: 8,
+    paddingRight: 6,
+  },
+  filtroBotao: {
+    paddingHorizontal: 11,
+    paddingVertical: 8,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: C.border,
+    backgroundColor: C.card,
   },
-
-  contextoSelecionado: {
-    backgroundColor: C.teal,
-    borderColor: C.teal,
+  filtroBotaoAtivo: {
+    backgroundColor: C.primary,
+    borderColor: C.primary,
   },
-
-  contextoTexto: {
-    color: C.dark,
-    fontSize: 12,
+  filtroTexto: {
+    fontSize: 11,
+    color: C.text,
   },
-
-  contextoTextoSelecionado: {
-    color: C.white,
+  filtroTextoAtivo: {
+    color: C.card,
+    fontWeight: '700',
   },
-
-  cancelar: {
-    color: C.gray,
-    textAlign: 'center',
+  graficoVazio: {
+    minHeight: 150,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  resumoCard: {
+    backgroundColor: C.card,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#E8EFED',
+    padding: 18,
+    marginBottom: 16,
+  },
+  resumoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 14,
+  },
+  resumoItem: {
+    width: '47%',
+    minHeight: 82,
+    borderRadius: 14,
+    backgroundColor: '#F7FAF9',
     padding: 12,
   },
-
-  desabilitado: {
-    opacity: 0.5,
+  resumoLabel: {
+    color: C.muted,
+    fontSize: 10,
   },
-
-  aviso: {
-    color: C.error,
-    fontSize: 14,
-    marginBottom: 12,
+  resumoValor: {
+    color: C.text,
+    fontSize: 20,
+    fontWeight: '800',
+    marginTop: 7,
   },
-
-  vazio: {
-    color: C.gray,
-    textAlign: 'center',
-    marginTop: 20,
-    marginBottom: 20,
+  resumoUnidade: {
+    color: C.muted,
+    fontSize: 9,
+    marginTop: 2,
   },
-
-  // GRÁFICO
-
-  graficoCard: {
-    backgroundColor: C.white,
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 20,
-    marginBottom: 12,
-  },
-
-  descricaoGrafico: {
-    color: C.gray,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 8,
-    marginBottom: 14,
-  },
-
-  rolagemGrafico: {
+  feedbackBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: C.primarySoft,
+    borderRadius: 12,
+    padding: 12,
     marginTop: 14,
+  },
+  feedbackTexto: {
+    flex: 1,
+    color: '#45635E',
+    fontSize: 11,
+    lineHeight: 17,
+  },
+  historicoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 8,
   },
-
-  detalhesPonto: {
-    backgroundColor: '#EAF4F2',
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 8,
-    marginBottom: 12,
+  historicoContagem: {
+    fontSize: 10,
+    color: C.muted,
   },
-
-  fecharDetalhes: {
-    color: C.teal,
-    fontWeight: '700',
-    marginTop: 8,
+  historicoVazio: {
+    backgroundColor: C.card,
+    borderRadius: 18,
+    padding: 26,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E8EFED',
   },
-
-  // RESUMO
-
-  resumo: {
-    backgroundColor: C.bg,
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 16,
+  historicoLista: {
+    gap: 10,
   },
-
-  resumoTitulo: {
-    color: C.dark,
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 10,
-    marginTop: 6,
+  registroCard: {
+    backgroundColor: C.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E8EFED',
+    padding: 15,
   },
-
-  infoResumo: {
-    color: C.dark,
-    fontSize: 13,
-    lineHeight: 21,
-    marginBottom: 7,
+  registroTopo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
   },
-
-  avisoAnalise: {
-    color: '#9A651D',
-    fontSize: 12,
-    lineHeight: 19,
-    marginBottom: 10,
+  registroValorRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
   },
-
-  nota: {
-    color: C.gray,
-    fontSize: 12,
-    lineHeight: 19,
-    marginTop: 12,
+  registroValor: {
+    fontSize: 23,
+    fontWeight: '800',
+    color: C.text,
   },
-
-  // HISTÓRICO
-
-  registro: {
-    backgroundColor: C.white,
-    borderRadius: 14,
-    padding: 16,
-    marginVertical: 6,
+  registroUnidade: {
+    fontSize: 10,
+    color: C.muted,
   },
-
-  valor: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: C.dark,
-  },
-
-  info: {
-    color: C.gray,
-    fontSize: 13,
+  registroData: {
+    fontSize: 11,
+    color: C.muted,
     marginTop: 4,
   },
-
-  acoes: {
+  registroContextoRow: {
     flexDirection: 'row',
-    gap: 24,
-    marginTop: 14,
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 10,
   },
-
-  editar: {
-    color: C.teal,
+  registroContexto: {
+    fontSize: 11,
+    color: C.muted,
+  },
+  registroObservacao: {
+    fontSize: 11,
+    color: '#52615E',
+    lineHeight: 17,
+    marginTop: 8,
+  },
+  acoesRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 13,
+  },
+  edicaoInline: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#E8EFED',
+  },
+  edicaoTitulo: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: C.text,
+  },
+  edicaoDescricao: {
+    fontSize: 10,
+    color: C.muted,
+    marginTop: 3,
+    lineHeight: 15,
+  },
+  fecharEdicao: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F4F8F7',
+  },
+  edicaoBotoes: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  botaoSecundario: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  botaoSecundarioTexto: {
+    color: C.text,
+    fontSize: 12,
     fontWeight: '700',
   },
+  botaoPrimarioInline: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: C.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-  excluir: {
-    color: C.error,
+  acaoEditar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 9,
+    backgroundColor: C.primarySoft,
+  },
+  acaoEditarTexto: {
+    color: C.primaryDark,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  acaoExcluir: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 9,
+    backgroundColor: C.dangerSoft,
+  },
+  acaoExcluirTexto: {
+    color: C.danger,
+    fontSize: 11,
     fontWeight: '700',
   },
 });
+

@@ -25,6 +25,7 @@ import {
 } from 'firebase/firestore';
 
 import { auth, db } from '../firebaseConfig';
+import { criarGlicemia } from '../services/glicemiaService';
 
 
 type TipoRegistro =
@@ -78,10 +79,13 @@ export default function NovoRegistroScreen() {
   const [
     momentoGlicose,
     setMomentoGlicose,
-  ] =
-    useState<
-      'jejum' | 'pos-prandial'
-    >('jejum');
+  ] = useState<
+    | 'Em jejum'
+    | 'Antes da refeição'
+    | 'Após a refeição'
+    | 'Antes de dormir'
+    | 'Outro'
+  >('Em jejum');
 
 
   const [observacao, setObservacao] =
@@ -117,51 +121,71 @@ export default function NovoRegistroScreen() {
     // GLICOSE
     // ---------------------------------------------------------
 
-    if (
-      tipoRegistro === 'glicose'
-    ) {
+    if (tipoRegistro === 'glicose') {
+      const usuario = auth.currentUser;
+
+      if (!usuario) {
+        Alert.alert(
+          'Erro',
+          'Não foi possível identificar o usuário logado.'
+        );
+        return;
+      }
 
       if (!glicose.trim()) {
-
         Alert.alert(
           'Atenção',
           'Informe o valor da glicose.'
         );
-
         return;
       }
 
-
-      const valorGlicose =
-        Number(glicose);
-
+      const valorGlicose = Number(glicose);
 
       if (
-        !Number.isInteger(
-          valorGlicose
-        ) ||
+        !Number.isInteger(valorGlicose) ||
         valorGlicose < 20 ||
         valorGlicose > 600
       ) {
-
         Alert.alert(
           'Valor inválido',
           'Informe um valor de glicose entre 20 e 600 mg/dL.'
         );
-
         return;
       }
 
+      try {
+        setSalvando(true);
 
-      /*
-        Por enquanto o salvamento de glicose
-        ainda não foi implementado.
-      */
+        await criarGlicemia({
+          userId: usuario.uid,
+          valor: valorGlicose,
+          data: dataAtual,
+          horario: horaAtual,
+          contexto: momentoGlicose,
+          observacao: observacao.trim(),
+        });
 
-      Alert.alert(
-        'Em desenvolvimento',
-        'O salvamento da glicose será implementado posteriormente.'
-      );
+        setGlicose('');
+        setObservacao('');
+        setMomentoGlicose('Em jejum');
+
+        Alert.alert(
+          'Registro salvo',
+          'A medição de glicose foi registrada com sucesso.'
+        );
+
+        router.replace('/glicose');
+      } catch (error) {
+        console.error('Erro ao salvar glicose:', error);
+
+        Alert.alert(
+          'Erro',
+          'Não foi possível salvar a medição de glicose. Tente novamente.'
+        );
+      } finally {
+        setSalvando(false);
+      }
 
       return;
     }
@@ -639,90 +663,46 @@ export default function NovoRegistroScreen() {
               </View>
 
 
-              {/* Momento da medição */}
+              {/* Contexto da medição */}
 
               <View style={styles.card}>
 
-                <Text
-                  style={
-                    styles.secaoTitulo
-                  }
-                >
-                  Momento da Medição
+                <Text style={styles.secaoTitulo}>
+                  Contexto da medição
                 </Text>
 
-
-                <View
-                  style={
-                    styles.momentoRow
-                  }
-                >
-
-                  {/* JEJUM */}
-
-                  <Pressable
-                    style={[
-                      styles.momentoButton,
-
-                      momentoGlicose ===
-                        'jejum' &&
-                        styles.momentoButtonAtivo,
-                    ]}
-
-                    onPress={() =>
-                      setMomentoGlicose(
-                        'jejum'
-                      )
-                    }
-                  >
-
-                    <Text
+                <View style={styles.momentoRow}>
+                  {[
+                    'Em jejum',
+                    'Antes da refeição',
+                    'Após a refeição',
+                    'Antes de dormir',
+                    'Outro',
+                  ].map((momento) => (
+                    <Pressable
+                      key={momento}
                       style={[
-                        styles.momentoTexto,
-
-                        momentoGlicose ===
-                          'jejum' &&
-                          styles.momentoTextoAtivo,
+                        styles.momentoButton,
+                        momentoGlicose === momento &&
+                          styles.momentoButtonAtivo,
                       ]}
+                      onPress={() =>
+                        setMomentoGlicose(
+                          momento as typeof momentoGlicose
+                        )
+                      }
                     >
-                      Em jejum
-                    </Text>
-
-                  </Pressable>
-
-
-                  {/* PÓS-PRANDIAL */}
-
-                  <Pressable
-                    style={[
-                      styles.momentoButton,
-
-                      momentoGlicose ===
-                        'pos-prandial' &&
-                        styles.momentoButtonAtivo,
-                    ]}
-
-                    onPress={() =>
-                      setMomentoGlicose(
-                        'pos-prandial'
-                      )
-                    }
-                  >
-
-                    <Text
-                      style={[
-                        styles.momentoTexto,
-
-                        momentoGlicose ===
-                          'pos-prandial' &&
-                          styles.momentoTextoAtivo,
-                      ]}
-                    >
-                      Pós-Prandial
-                    </Text>
-
-                  </Pressable>
-
+                      <Text
+                        style={[
+                          styles.momentoTexto,
+                          momentoGlicose === momento &&
+                            styles.momentoTextoAtivo,
+                        ]}
+                      >
+                        {momento}
+                      </Text>
+                    </Pressable>
+                  ))}
                 </View>
 
               </View>
@@ -1314,14 +1294,12 @@ const styles = StyleSheet.create({
 
   momentoRow: {
     flexDirection: 'row',
-
+    flexWrap: 'wrap',
     gap: 8,
   },
 
-
   momentoButton: {
-    flex: 1,
-
+    paddingHorizontal: 12,
     paddingVertical: 10,
 
     backgroundColor:
