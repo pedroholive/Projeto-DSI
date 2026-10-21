@@ -1,9 +1,8 @@
-
 import { Ionicons } from '@expo/vector-icons';
-import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { useRouter, type Href } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { onAuthStateChanged, type User } from 'firebase/auth';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   ActivityIndicator,
@@ -18,6 +17,7 @@ import {
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../firebaseConfig';
+import { listarPacientesVinculados } from '../services/pacientesVinculadosService';
 
 type DoctorProfile = {
   nome?: string;
@@ -26,16 +26,11 @@ type DoctorProfile = {
   crm?: string | null;
 };
 
-type PatientAlert = {
+type LinkedPatient = {
   id: string;
   nome: string;
-  idade: number;
-  tempo: string;
-  alerta: string;
-  valor: string;
-  unidade: string;
-  nivel: 'critical' | 'warning';
 };
+
 
 const C = {
   background: '#F4F8F7',
@@ -52,50 +47,15 @@ const C = {
   warningSoft: '#FFF3D6',
 };
 
-// Dados demonstrativos da Home.
-// A glicemia profissional utiliza pacientes reais vinculados.
-const alertas: PatientAlert[] = [
-  {
-    id: '5436',
-    nome: 'Mariana Souza',
-    idade: 54,
-    tempo: 'Há 12 min',
-    alerta: 'Glicose crítica',
-    valor: '245',
-    unidade: 'mg/dL',
-    nivel: 'critical',
-  },
-  {
-    id: '9587',
-    nome: 'Roberto Alves',
-    idade: 67,
-    tempo: 'Há 35 min',
-    alerta: 'P.A. limite',
-    valor: '145/95',
-    unidade: 'mmHg',
-    nivel: 'warning',
-  },
-  {
-    id: '4821',
-    nome: 'Ana Julia Costa',
-    idade: 29,
-    tempo: 'Há 1h',
-    alerta: 'Hipoglicemia',
-    valor: '62',
-    unidade: 'mg/dL',
-    nivel: 'critical',
-  },
-  {
-    id: '7291',
-    nome: 'Marcos Pereira',
-    idade: 71,
-    tempo: 'Há 2h',
-    alerta: 'Crise hipertensiva',
-    valor: '180/110',
-    unidade: 'mmHg',
-    nivel: 'critical',
-  },
-];
+// Consulta "DD/MM/AAAA" -> true se for hoje ou depois
+function isTodayOrFuture(date?: string) {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(date ?? '');
+  if (!m) return false;
+  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return d >= today;
+}
 
 function doctorDisplayName(
   profile: DoctorProfile | null,
@@ -123,6 +83,11 @@ export default function DoctorHomeScreen() {
 
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+
+  const [patients, setPatients] = useState<LinkedPatient[]>([]);
+  const [scheduledCount, setScheduledCount] = useState(0);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataError, setDataError] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(
@@ -168,42 +133,91 @@ export default function DoctorHomeScreen() {
     return unsubscribe;
   }, [router]);
 
-  const filteredAlerts = useMemo(() => {
-    const term = search
-      .trim()
-      .toLocaleLowerCase('pt-BR');
+  // Dados reais: pacientes vinculados e consultas agendadas pelo médico
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
 
-    if (!term) return alertas;
+      async function loadData() {
+        const uid = user?.uid;
+        if (!uid) return;
 
-    return alertas.filter(
+        setDataLoading(true);
+        setDataError('');
+
+        let failed = '';
+
+        // Pacientes vinculados (o nome vem do próprio vínculo: nomePaciente)
+        try {
+          const loaded = await listarPacientesVinculados();
+
+          if (active) {
+            setPatients(
+              [...loaded].sort((a, b) =>
+                a.nome.localeCompare(b.nome, 'pt-BR')
+              )
+            );
+          }
+        } catch (error) {
+          console.error('Erro ao carregar vínculos da home:', error);
+          failed = `pacientes (${(error as { code?: string }).code ?? 'erro'})`;
+        }
+
+        // Consultas agendadas pelo médico (independente dos pacientes)
+        try {
+          const appointmentsSnap = await getDocs(
+            query(
+              collection(db, 'consultas'),
+              where('medicoId', '==', uid),
+              // exigido pelas regras: só consultas marcadas por médico
+              where('origem', '==', 'medico')
+            )
+          );
+
+          const scheduled = appointmentsSnap.docs
+            .map((d) => d.data())
+            .filter(
+              (c) =>
+                (c.status === 'aguardando_confirmacao' ||
+                  c.status === 'confirmada') &&
+                isTodayOrFuture(c.data)
+            ).length;
+
+          if (active) setScheduledCount(scheduled);
+        } catch (error) {
+          console.error('Erro ao carregar consultas da home:', error);
+          failed +=
+            (failed ? ' e ' : '') +
+            `consultas (${(error as { code?: string }).code ?? 'erro'})`;
+        }
+
+        if (active) {
+          setDataError(
+            failed ? `Não foi possível carregar: ${failed}.` : ''
+          );
+          setDataLoading(false);
+        }
+      }
+
+      loadData();
+
+      return () => {
+        active = false;
+      };
+    }, [user?.uid])
+  );
+
+  const filteredPatients = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase('pt-BR');
+
+    if (!term) return patients;
+
+    return patients.filter(
       (patient) =>
-        patient.nome
-          .toLocaleLowerCase('pt-BR')
-          .includes(term) ||
-        patient.id.includes(term)
+        patient.nome.toLocaleLowerCase('pt-BR').includes(term) ||
+        patient.id.toLocaleLowerCase('pt-BR').includes(term)
     );
-  }, [search]);
-
-  const handleLogout = () => {
-    Alert.alert(
-      'Sair do aplicativo',
-      'Deseja encerrar sua sessão?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Sair',
-          style: 'destructive',
-          onPress: async () => {
-            await signOut(auth);
-            router.replace('/login');
-          },
-        },
-      ]
-    );
-  };
+  }, [patients, search]);
 
   if (loading) {
     return (
@@ -261,6 +275,7 @@ export default function DoctorHomeScreen() {
 
           <Pressable
             style={styles.notificationButton}
+            onPress={() => router.push('/alertas-medico' as Href)}
             accessibilityLabel="Notificações"
           >
             <Ionicons
@@ -312,7 +327,7 @@ export default function DoctorHomeScreen() {
         {/* ACESSO AO VÍNCULO COM PACIENTES */}
         <Pressable
           onPress={() =>
-            router.push('/vincular-paciente' as Href)
+            router.push('/meus-pacientes' as Href)
           }
           style={({ pressed }) => [
             styles.glicemiaCard,
@@ -335,7 +350,7 @@ export default function DoctorHomeScreen() {
             </Text>
 
             <Text style={styles.glicemiaDescription}>
-              Insira o convite temporário enviado pelo paciente.
+              Solicite o vínculo por código e acompanhe seus pacientes.
             </Text>
           </View>
 
@@ -346,7 +361,7 @@ export default function DoctorHomeScreen() {
           />
         </Pressable>
 
-        {/* BUSCA EXISTENTE */}
+        {/* BUSCA */}
         <View style={styles.searchBox}>
           <Ionicons
             name="search-outline"
@@ -357,7 +372,7 @@ export default function DoctorHomeScreen() {
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Buscar paciente por nome ou ID..."
+            placeholder="Buscar paciente vinculado..."
             placeholderTextColor={C.muted}
             style={styles.searchInput}
             returnKeyType="search"
@@ -377,7 +392,7 @@ export default function DoctorHomeScreen() {
           )}
         </View>
 
-        {/* RESUMO EXISTENTE */}
+        {/* RESUMO */}
         <Text style={styles.sectionTitle}>
           VISÃO GERAL DE HOJE
         </Text>
@@ -385,69 +400,89 @@ export default function DoctorHomeScreen() {
         <View style={styles.summaryRow}>
           <SummaryCard
             label="Pacientes"
-            value="142"
+            value={dataLoading ? '…' : String(patients.length)}
             suffix="ativos"
             color={C.primary}
           />
 
           <SummaryCard
             label="Alertas"
-            value="5"
-            suffix="críticos"
-            color={C.danger}
-            badge="Ação"
+            value="—"
+            suffix="em breve"
+            color={C.muted}
           />
 
           <SummaryCard
             label="Consultas"
-            value="8"
+            value={dataLoading ? '…' : String(scheduledCount)}
             suffix="agendadas"
             color={C.text}
           />
         </View>
 
-        {/* ALERTAS EXISTENTES */}
+        {/* PACIENTES VINCULADOS */}
         <View style={styles.alertTitleRow}>
           <Text style={styles.sectionTitle}>
-            PACIENTES EM ALERTA
+            SEUS PACIENTES
           </Text>
 
-          <Pressable>
+          <Pressable
+            onPress={() => router.push('/meus-pacientes' as Href)}
+          >
             <Text style={styles.seeAll}>
-              Ver todos (5)
+              Ver todos ({patients.length})
             </Text>
           </Pressable>
         </View>
 
+        {dataError !== '' && (
+          <Text style={styles.errorText}>{dataError}</Text>
+        )}
+
         <View style={styles.alertList}>
-          {filteredAlerts.length > 0 ? (
-            filteredAlerts.map((patient) => (
+          {dataLoading ? (
+            <ActivityIndicator size="large" color={C.primary} />
+          ) : filteredPatients.length > 0 ? (
+            filteredPatients.map((patient) => (
               <PatientCard
                 key={patient.id}
                 patient={patient}
+                onPress={() =>
+                  router.push({
+                    pathname: '/agendar-consulta-medica',
+                    params: {
+                      pacienteId: patient.id,
+                      pacienteNome: patient.nome,
+                    },
+                  } as Href)
+                }
               />
             ))
           ) : (
             <View style={styles.emptyState}>
               <Ionicons
-                name="search-outline"
+                name="people-outline"
                 size={30}
                 color={C.muted}
               />
 
               <Text style={styles.emptyTitle}>
-                Nenhum paciente encontrado
+                {patients.length === 0
+                  ? 'Nenhum paciente vinculado'
+                  : 'Nenhum paciente encontrado'}
               </Text>
 
               <Text style={styles.emptyText}>
-                Confira o nome ou o ID informado.
+                {patients.length === 0
+                  ? 'Use "Vincular paciente" para solicitar um vínculo.'
+                  : 'Confira o nome informado.'}
               </Text>
             </View>
           )}
         </View>
       </ScrollView>
 
-      {/* BARRA INFERIOR CORRIGIDA */}
+      {/* BARRA INFERIOR */}
       <View style={styles.bottomBar}>
         <BottomItem
           icon="people-outline"
@@ -461,17 +496,25 @@ export default function DoctorHomeScreen() {
         <BottomItem
           icon="notifications-outline"
           label="Alertas"
+          onPress={() =>
+            router.push('/alertas-medico' as Href)
+          }
         />
 
         <BottomItem
           icon="calendar-outline"
           label="Consultas"
+          onPress={() =>
+            router.push('/consultas-medico' as Href)
+          }
         />
 
         <BottomItem
           icon="person-outline"
           label="Perfil"
-          onPress={handleLogout}
+          onPress={() =>
+            router.push('/perfil-medico' as Href)
+          }
         />
       </View>
     </SafeAreaView>
@@ -523,25 +566,20 @@ function SummaryCard({
 
 function PatientCard({
   patient,
+  onPress,
 }: {
-  patient: PatientAlert;
+  patient: LinkedPatient;
+  onPress: () => void;
 }) {
-  const isCritical = patient.nivel === 'critical';
-
-  const accent = isCritical
-    ? C.danger
-    : C.warning;
-
-  const accentSoft = isCritical
-    ? C.dangerSoft
-    : C.warningSoft;
-
   return (
     <Pressable
+      onPress={onPress}
       style={({ pressed }) => [
         styles.patientCard,
         pressed && styles.cardPressed,
       ]}
+      accessibilityRole="button"
+      accessibilityLabel={`Agendar consulta para ${patient.nome}`}
     >
       <View style={styles.patientAvatar}>
         <Ionicons
@@ -552,21 +590,15 @@ function PatientCard({
       </View>
 
       <View style={styles.patientInfo}>
-        <View style={styles.patientHeading}>
-          <Text
-            style={styles.patientName}
-            numberOfLines={1}
-          >
-            {patient.nome}
-          </Text>
-
-          <Text style={styles.patientTime}>
-            {patient.tempo}
-          </Text>
-        </View>
+        <Text
+          style={styles.patientName}
+          numberOfLines={1}
+        >
+          {patient.nome}
+        </Text>
 
         <Text style={styles.patientMeta}>
-          {patient.idade} anos • ID: #{patient.id}
+          ID: #{patient.id.slice(0, 8)}
         </Text>
 
         <View style={styles.measureRow}>
@@ -574,26 +606,22 @@ function PatientCard({
             style={[
               styles.alertBadge,
               {
-                color: accent,
-                backgroundColor: accentSoft,
+                color: C.primary,
+                backgroundColor: C.primaryPale,
               },
             ]}
           >
-            {patient.alerta}
-          </Text>
-
-          <Text style={styles.measureValue}>
-            {patient.valor}
+            Vínculo ativo
           </Text>
 
           <Text style={styles.measureUnit}>
-            {patient.unidade}
+            Toque para agendar consulta
           </Text>
         </View>
       </View>
 
       <Ionicons
-        name="chevron-forward"
+        name="calendar-outline"
         size={24}
         color={C.primary}
       />
@@ -836,7 +864,7 @@ const styles = StyleSheet.create({
   },
 
   patientCard: {
-    minHeight: 128,
+    minHeight: 100,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: C.card,
@@ -914,6 +942,12 @@ const styles = StyleSheet.create({
   measureUnit: {
     color: C.muted,
     fontSize: 12,
+  },
+
+  errorText: {
+    color: C.danger,
+    fontSize: 14,
+    marginBottom: 12,
   },
 
   emptyState: {
