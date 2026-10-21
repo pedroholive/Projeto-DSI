@@ -24,7 +24,6 @@ import {
   type Vinculo,
 } from '@/services/vinculosService';
 
-// Cores do HealthSync
 const C = {
   background: '#F4F8F7',
   card: '#FFFFFF',
@@ -39,25 +38,31 @@ const C = {
 export default function MeusPacientesScreen() {
   const router = useRouter();
 
-  // Estados da solicitação
   const [codigo, setCodigo] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [mensagem, setMensagem] = useState('');
+  const [mensagemErro, setMensagemErro] = useState(false);
 
-  // Estados da listagem
   const [vinculos, setVinculos] = useState<Vinculo[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroListagem, setErroListagem] = useState('');
 
-  // Validação do código hexadecimal de 12 caracteres
-  const codigoValido = /^[A-F0-9]{12}$/.test(codigo);
+  // Nosso serviço utiliza tokens hexadecimais de 64 caracteres.
+  const codigoValido = /^[a-f0-9]{64}$/.test(
+    codigo.trim().toLowerCase()
+  );
 
-  // Busca os vínculos ao abrir ou retornar à tela
+  const carregarVinculos = useCallback(async () => {
+    const dados = await listarVinculosProfissional();
+    setVinculos(dados);
+    setErroListagem('');
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       let ativo = true;
 
-      async function carregarVinculos() {
+      async function carregar() {
         setCarregando(true);
         setErroListagem('');
 
@@ -68,18 +73,19 @@ export default function MeusPacientesScreen() {
             setVinculos(dados);
           }
         } catch (error: unknown) {
-            console.error('Erro ao listar vínculos:', error);
+          console.error('Erro ao listar vínculos:', error);
 
-            const mensagemErro =
-                error instanceof Error
-                ? error.message
-                : String(error);
+          const mensagemErro =
+            error instanceof Error
+              ? error.message
+              : String(error);
 
-            if (ativo) {
-                setVinculos([]);
-                setErroListagem(`Erro ao carregar pacientes: ${mensagemErro}`);
-            }
-            
+          if (ativo) {
+            setVinculos([]);
+            setErroListagem(
+              `Erro ao carregar pacientes: ${mensagemErro}`
+            );
+          }
         } finally {
           if (ativo) {
             setCarregando(false);
@@ -87,7 +93,7 @@ export default function MeusPacientesScreen() {
         }
       }
 
-      carregarVinculos();
+      carregar();
 
       return () => {
         ativo = false;
@@ -95,7 +101,6 @@ export default function MeusPacientesScreen() {
     }, [])
   );
 
-  // Separa os vínculos pelo status
   const vinculosPendentes = vinculos.filter(
     (vinculo) => vinculo.status === 'pendente'
   );
@@ -104,7 +109,6 @@ export default function MeusPacientesScreen() {
     (vinculo) => vinculo.status === 'ativo'
   );
 
-  // Envia a solicitação de vínculo
   async function solicitarVinculo() {
     if (!codigoValido || enviando) {
       return;
@@ -113,18 +117,22 @@ export default function MeusPacientesScreen() {
     Keyboard.dismiss();
     setEnviando(true);
     setMensagem('');
+    setMensagemErro(false);
 
     try {
-      await solicitarVinculoPorCodigo(codigo);
+      await solicitarVinculoPorCodigo(
+        codigo.trim().toLowerCase()
+      );
 
-      // Atualiza a lista após enviar a solicitação
+      setCodigo('');
+
+      setMensagem(
+        'Solicitação enviada! Aguarde a autorização do paciente.'
+      );
+
       try {
-        const dadosAtualizados =
-          await listarVinculosProfissional();
-
-        setVinculos(dadosAtualizados);
-        setErroListagem('');
-      } catch (error) {
+        await carregarVinculos();
+      } catch (error: unknown) {
         console.error(
           'Erro ao atualizar vínculos:',
           error
@@ -135,12 +143,6 @@ export default function MeusPacientesScreen() {
         );
       }
 
-      setCodigo('');
-
-      setMensagem(
-        'Solicitação enviada! Aguarde a autorização do paciente.'
-      );
-
       if (Platform.OS !== 'web') {
         Alert.alert(
           'Solicitação enviada',
@@ -150,22 +152,34 @@ export default function MeusPacientesScreen() {
     } catch (error: unknown) {
       console.error('Erro ao solicitar vínculo:', error);
 
-      const mensagemErro =
+      const textoErro =
         error instanceof Error
           ? error.message
           : 'Não foi possível enviar a solicitação.';
 
-      if (Platform.OS === 'web') {
-        setMensagem(`Erro: ${mensagemErro}`);
-      } else {
+      setMensagem(`Erro: ${textoErro}`);
+      setMensagemErro(true);
+
+      if (Platform.OS !== 'web') {
         Alert.alert(
           'Erro na solicitação',
-          mensagemErro
+          textoErro
         );
       }
     } finally {
       setEnviando(false);
     }
+  }
+
+  function nomeDoPaciente(vinculo: Vinculo) {
+    if (
+      typeof vinculo.nomePaciente === 'string' &&
+      vinculo.nomePaciente.trim()
+    ) {
+      return vinculo.nomePaciente.trim();
+    }
+
+    return 'Paciente';
   }
 
   return (
@@ -175,7 +189,7 @@ export default function MeusPacientesScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Botão voltar */}
+        {/* BOTÃO VOLTAR */}
         <Pressable
           style={styles.voltar}
           onPress={() => router.back()}
@@ -191,7 +205,7 @@ export default function MeusPacientesScreen() {
           </Text>
         </Pressable>
 
-        {/* Cabeçalho */}
+        {/* CABEÇALHO */}
         <Text style={styles.titulo}>
           Meus Pacientes
         </Text>
@@ -200,7 +214,7 @@ export default function MeusPacientesScreen() {
           Gerencie suas solicitações de acompanhamento.
         </Text>
 
-        {/* Solicitação de vínculo */}
+        {/* SOLICITAÇÃO DE VÍNCULO */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Ionicons
@@ -225,26 +239,28 @@ export default function MeusPacientesScreen() {
 
           <TextInput
             style={styles.input}
-            placeholder="Ex.: A1B2C3D4E5F6"
+            placeholder="Cole o código de 64 caracteres do paciente"
             placeholderTextColor={C.muted}
             value={codigo}
             onChangeText={(texto) =>
               setCodigo(
                 texto
-                  .toUpperCase()
-                  .replace(/[^A-F0-9]/g, '')
-                  .slice(0, 12)
+                  .replace(/[^a-fA-F0-9]/g, '')
+                  .toLowerCase()
+                  .slice(0, 64)
               )
             }
-            maxLength={12}
-            autoCapitalize="characters"
+            maxLength={64}
+            autoCapitalize="none"
             autoCorrect={false}
             editable={!enviando}
+            multiline
+            textAlignVertical="top"
           />
 
           <Text style={styles.ajuda}>
-            O código possui 12 caracteres e expira
-            após 10 minutos.
+            O código possui 64 caracteres, expira após
+            10 minutos e pode ser utilizado apenas uma vez.
           </Text>
 
           <Pressable
@@ -269,8 +285,7 @@ export default function MeusPacientesScreen() {
             <Text
               style={[
                 styles.mensagem,
-                mensagem.startsWith('Erro:') &&
-                  styles.mensagemErro,
+                mensagemErro && styles.mensagemErro,
               ]}
             >
               {mensagem}
@@ -278,7 +293,7 @@ export default function MeusPacientesScreen() {
           )}
         </View>
 
-        {/* Listagem de vínculos */}
+        {/* LISTAGEM DOS VÍNCULOS */}
         {carregando ? (
           <View style={styles.carregamento}>
             <ActivityIndicator
@@ -292,14 +307,13 @@ export default function MeusPacientesScreen() {
           </View>
         ) : (
           <>
-            {/* Erro ao carregar a listagem */}
             {erroListagem !== '' && (
               <Text style={styles.mensagemErro}>
                 {erroListagem}
               </Text>
             )}
 
-            {/* Solicitações pendentes */}
+            {/* SOLICITAÇÕES PENDENTES */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <Ionicons
@@ -309,8 +323,7 @@ export default function MeusPacientesScreen() {
                 />
 
                 <Text style={styles.cardTitulo}>
-                  Solicitações pendentes
-                  {' '}({vinculosPendentes.length})
+                  Solicitações pendentes ({vinculosPendentes.length})
                 </Text>
               </View>
 
@@ -332,8 +345,7 @@ export default function MeusPacientesScreen() {
 
                     <View style={styles.itemInformacoes}>
                       <Text style={styles.itemTitulo}>
-                        Paciente:{' '}
-                        {vinculo.pacienteId.slice(0, 8)}...
+                        Paciente: {vinculo.pacienteId.slice(0, 8)}...
                       </Text>
 
                       <Text style={styles.itemStatus}>
@@ -345,7 +357,7 @@ export default function MeusPacientesScreen() {
               )}
             </View>
 
-            {/* Pacientes vinculados */}
+            {/* PACIENTES VINCULADOS */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <Ionicons
@@ -355,8 +367,7 @@ export default function MeusPacientesScreen() {
                 />
 
                 <Text style={styles.cardTitulo}>
-                  Pacientes vinculados
-                  {' '}({vinculosAtivos.length})
+                  Pacientes vinculados ({vinculosAtivos.length})
                 </Text>
               </View>
 
@@ -378,8 +389,7 @@ export default function MeusPacientesScreen() {
 
                     <View style={styles.itemInformacoes}>
                       <Text style={styles.itemTitulo}>
-                        Paciente:{' '}
-                        {vinculo.pacienteId.slice(0, 8)}...
+                        {nomeDoPaciente(vinculo)}
                       </Text>
 
                       <Text style={styles.itemStatusAtivo}>
@@ -477,10 +487,11 @@ const styles = StyleSheet.create({
     borderColor: C.border,
     borderRadius: 12,
     padding: 15,
-    fontSize: 17,
-    letterSpacing: 2,
+    fontSize: 15,
+    letterSpacing: 0.5,
     color: C.text,
     backgroundColor: C.background,
+    minHeight: 90,
   },
 
   ajuda: {
@@ -517,7 +528,9 @@ const styles = StyleSheet.create({
   mensagemErro: {
     color: C.danger,
     fontSize: 14,
+    marginTop: 12,
     marginBottom: 16,
+    lineHeight: 20,
   },
 
   carregamento: {
