@@ -1,7 +1,11 @@
 
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, Timestamp, FieldValue} from "firebase-admin/firestore";
+import {
+  getFirestore,
+  Timestamp,
+  FieldValue,
+} from "firebase-admin/firestore";
 import { randomBytes, createHash } from "node:crypto";
 
 initializeApp();
@@ -13,7 +17,6 @@ function gerarHash(codigo: string): string {
     .update(codigo)
     .digest("hex");
 }
-
 
 const MAX_TENTATIVAS = 5;
 const JANELA_TENTATIVAS_MS = 10 * 60 * 1000;
@@ -60,6 +63,9 @@ async function verificarLimiteTentativas(
   });
 }
 
+// ======================================================
+// 1. GERAR CÓDIGO DE VÍNCULO
+// ======================================================
 
 export const gerarCodigoVinculo = onCall(
   async (request) => {
@@ -171,6 +177,9 @@ export const gerarCodigoVinculo = onCall(
   }
 );
 
+// ======================================================
+// 2. SOLICITAR VÍNCULO POR CÓDIGO
+// ======================================================
 
 export const solicitarVinculoPorCodigo = onCall(
   async (request) => {
@@ -212,6 +221,7 @@ export const solicitarVinculoPorCodigo = onCall(
         "Profissional não autorizado."
       );
     }
+
     await verificarLimiteTentativas(profissionalId);
 
     const codigo = codigoRecebido.toUpperCase();
@@ -247,25 +257,23 @@ export const solicitarVinculoPorCodigo = onCall(
 
         const pacienteId = dadosCodigo.pacienteId;
 
-        
         const controleRef = db
-        .collection("controleCodigosVinculo")
-        .doc(pacienteId);
+          .collection("controleCodigosVinculo")
+          .doc(pacienteId);
 
         const controleDoc = await transaction.get(
-        controleRef
+          controleRef
         );
 
         if (
-        !controleDoc.exists ||
-        controleDoc.data()?.hashAtivo !== hash
+          !controleDoc.exists ||
+          controleDoc.data()?.hashAtivo !== hash
         ) {
-        throw new HttpsError(
+          throw new HttpsError(
             "failed-precondition",
             "Este código não está mais ativo."
-        );
+          );
         }
-
 
         if (
           typeof pacienteId !== "string" ||
@@ -277,7 +285,8 @@ export const solicitarVinculoPorCodigo = onCall(
           );
         }
 
-        const vinculoId = `${profissionalId}_${pacienteId}`;
+        const vinculoId =
+          `${profissionalId}_${pacienteId}`;
 
         const vinculoRef = db
           .collection("vinculos")
@@ -312,6 +321,93 @@ export const solicitarVinculoPorCodigo = onCall(
     return {
       sucesso: true,
       vinculoId: resultado.vinculoId,
+    };
+  }
+);
+
+// ======================================================
+// 3. LISTAR PACIENTES VINCULADOS AO MÉDICO
+// ======================================================
+
+export const listarPacientesVinculados = onCall(
+  async (request) => {
+    const profissionalId = request.auth?.uid;
+
+    if (!profissionalId) {
+      throw new HttpsError(
+        "unauthenticated",
+        "É necessário estar autenticado."
+      );
+    }
+
+    // Verifica se o usuário é um médico autorizado.
+    const profissionalDoc = await db
+      .collection("usuarios")
+      .doc(profissionalId)
+      .get();
+
+    const profissional = profissionalDoc.data();
+
+    if (
+      !profissionalDoc.exists ||
+      profissional?.perfil !== "professional" ||
+      profissional?.especialidade !== "Médico" ||
+      profissional?.verificado !== true
+    ) {
+      throw new HttpsError(
+        "permission-denied",
+        "Somente médicos verificados podem consultar pacientes vinculados."
+      );
+    }
+
+    // Busca somente os vínculos ativos deste médico.
+    const vinculosSnapshot = await db
+      .collection("vinculos")
+      .where("profissionalId", "==", profissionalId)
+      .where("status", "==", "ativo")
+      .get();
+
+    // Busca os nomes dos pacientes autorizados.
+    const pacientes = await Promise.all(
+      vinculosSnapshot.docs.map(async (vinculoDoc) => {
+        const pacienteId = vinculoDoc.data().pacienteId;
+
+        if (typeof pacienteId !== "string") {
+          return null;
+        }
+
+        const pacienteDoc = await db
+          .collection("usuarios")
+          .doc(pacienteId)
+          .get();
+
+        if (
+          !pacienteDoc.exists ||
+          pacienteDoc.data()?.perfil !== "patient"
+        ) {
+          return null;
+        }
+
+        const nome = pacienteDoc.data()?.nome;
+
+        return {
+          id: pacienteId,
+          nome:
+            typeof nome === "string" && nome.trim()
+              ? nome.trim()
+              : "Paciente sem nome",
+        };
+      })
+    );
+
+    // Retorna apenas os dados necessários à interface.
+    return {
+      pacientes: pacientes.filter(
+        (
+          paciente
+        ): paciente is { id: string; nome: string } =>
+          paciente !== null
+      ),
     };
   }
 );
