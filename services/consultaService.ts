@@ -74,21 +74,19 @@ export async function criarConsultaMedica(
 
   // Estrutura de vínculo proposta:
   // vinculos/{medicoId}_{pacienteId}
-  const vinculoId = `${medicoId}_${dados.pacienteId}`;
+  const vinculoQuery = query(
+  collection(db, 'vinculos'),
+  where('profissionalId', '==', medicoId),
+  where('pacienteId', '==', dados.pacienteId),
+  where('status', '==', 'ativo')
+);
 
-  const vinculoRef = doc(db, 'vinculos', vinculoId);
-  const vinculoSnapshot = await getDoc(vinculoRef);
+  const vinculoSnapshot = await getDocs(vinculoQuery);
 
-  if (
-    !vinculoSnapshot.exists() ||
-    vinculoSnapshot.data().status !== 'ativo' ||
-    vinculoSnapshot.data().profissionalId !== medicoId ||
-    vinculoSnapshot.data().pacienteId !== dados.pacienteId
-  ) {
-    throw new Error(
-      'O paciente não possui vínculo ativo com este profissional.'
-    );
-}
+  if (vinculoSnapshot.empty) {
+    throw new Error('O paciente não possui vínculo ativo com este profissional.');
+  }
+
 
   const medicoSnapshot = await getDoc(
     doc(db, 'usuarios', medicoId)
@@ -264,9 +262,6 @@ export async function atualizarConsulta(
   });
 }
 
-
-
-
 export async function excluirConsulta(
   consultaId: string,
   userId: string
@@ -382,6 +377,88 @@ export function acompanharConsultasPaciente(
     },
     (error) => {
       console.error('Erro ao acompanhar consultas:', error);
+      onError?.(error);
+    }
+  );
+}
+
+
+export interface ConsultaMedico extends Consulta {
+  pacienteNome?: string;
+}
+
+export function acompanharConsultasMedico(
+  callback: (consultas: ConsultaMedico[]) => void,
+  onError?: (error: Error) => void
+): Unsubscribe {
+  const medicoId = auth.currentUser?.uid;
+
+  if (!medicoId) {
+    onError?.(new Error('Médico não autenticado.'));
+    return () => {};
+  }
+
+  // As regras do Firestore só liberam a leitura quando a consulta é
+  // origem 'medico' E medicoId é o do usuário; os dois filtros são necessários.
+  const consultaQuery = query(
+    collection(db, 'consultas'),
+    where('medicoId', '==', medicoId),
+    where('origem', '==', 'medico')
+  );
+
+  // Nome do paciente: vem do vínculo (campo nomePaciente), pois as regras
+  // não permitem ao médico ler o documento do paciente em 'usuarios'.
+  let nomes: Map<string, string> | null = null;
+
+  async function carregarNomes(): Promise<Map<string, string>> {
+    if (nomes) return nomes;
+
+    const mapa = new Map<string, string>();
+
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db, 'vinculos'),
+          where('profissionalId', '==', medicoId)
+        )
+      );
+
+      snap.docs.forEach((d) => {
+        const v = d.data();
+        if (typeof v.nomePaciente === 'string' && v.nomePaciente.trim()) {
+          mapa.set(v.pacienteId as string, v.nomePaciente);
+        }
+      });
+
+      nomes = mapa;
+    } catch (error) {
+      console.error('Erro ao carregar nomes dos pacientes:', error);
+    }
+
+    return mapa;
+  }
+
+  return onSnapshot(
+    consultaQuery,
+    async (resultado) => {
+      const mapa = await carregarNomes();
+
+      const consultas: ConsultaMedico[] = resultado.docs.map((d) => {
+        const dados = d.data() as Omit<Consulta, 'id'>;
+
+        return {
+          id: d.id,
+          ...dados,
+          pacienteNome: dados.pacienteId
+            ? mapa.get(dados.pacienteId)
+            : undefined,
+        };
+      });
+
+      callback(consultas);
+    },
+    (error) => {
+      console.error('Erro ao acompanhar consultas do médico:', error);
       onError?.(error);
     }
   );
