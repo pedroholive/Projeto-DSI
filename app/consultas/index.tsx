@@ -16,6 +16,7 @@ import { auth } from '@/firebaseConfig';
 import {
   type Consulta,
   listarConsultas,
+  responderConsulta,
 } from '@/services/consultaService';
 
 const C = {
@@ -95,8 +96,21 @@ function gerarSemana(dataReferencia: Date) {
   });
 }
 
+// Consulta marcada pelo médico que ainda depende da resposta do paciente
+function aguardandoResposta(consulta: Consulta) {
+  return (
+    consulta.origem === 'medico' &&
+    consulta.status === 'aguardando_confirmacao'
+  );
+}
+
 function obterStatusConsulta(consulta: Consulta, anterior: boolean) {
-  if (anterior) {
+  if (
+    anterior &&
+    consulta.status !== 'recusada' &&
+    consulta.status !== 'cancelada' &&
+    consulta.status !== 'aguardando_confirmacao'
+  ) {
     return {
       texto: 'Realizada',
       cor: C.muted,
@@ -179,16 +193,60 @@ function DiaCalendario({
   );
 }
 
+function BotoesResposta({
+  onResponder,
+  carregando,
+}: {
+  onResponder: (resposta: 'confirmada' | 'recusada') => void;
+  carregando: boolean;
+}) {
+  return (
+    <View style={styles.botoesResposta}>
+      <Pressable
+        style={[
+          styles.botaoRecusar,
+          carregando && styles.botaoRespostaDesabilitado,
+        ]}
+        disabled={carregando}
+        onPress={() => onResponder('recusada')}
+        accessibilityLabel="Recusar consulta"
+      >
+        <Text style={styles.botaoRecusarTexto}>Recusar</Text>
+      </Pressable>
+
+      <Pressable
+        style={[
+          styles.botaoConfirmar,
+          carregando && styles.botaoRespostaDesabilitado,
+        ]}
+        disabled={carregando}
+        onPress={() => onResponder('confirmada')}
+        accessibilityLabel="Confirmar consulta"
+      >
+        {carregando ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        ) : (
+          <Text style={styles.botaoConfirmarTexto}>Confirmar</Text>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
 function CardConsulta({
   consulta,
   anterior = false,
   invalida = false,
   onPress,
+  onResponder,
+  respondendo = false,
 }: {
   consulta: Consulta;
   anterior?: boolean;
   invalida?: boolean;
   onPress: () => void;
+  onResponder?: (resposta: 'confirmada' | 'recusada') => void;
+  respondendo?: boolean;
 }) {
   const status = invalida
     ? {
@@ -291,13 +349,22 @@ function CardConsulta({
             </Text>
           </View>
         )}
+
+        {onResponder && aguardandoResposta(consulta) && !invalida && (
+          <BotoesResposta
+            onResponder={onResponder}
+            carregando={respondendo}
+          />
+        )}
       </View>
 
-      <Ionicons
-        name="chevron-forward"
-        size={19}
-        color="#A4B0AD"
-      />
+      {consulta.origem !== 'medico' && (
+        <Ionicons
+          name="chevron-forward"
+          size={19}
+          color="#A4B0AD"
+        />
+      )}
     </Pressable>
   );
 }
@@ -309,8 +376,51 @@ export default function ConsultasScreen() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
   const [agora, setAgora] = useState(() => new Date());
+  const [respondendoId, setRespondendoId] = useState<string | null>(null);
+  const [avisoResposta, setAvisoResposta] = useState('');
+
+  async function responder(
+    consulta: Consulta,
+    resposta: 'confirmada' | 'recusada'
+  ) {
+    if (!consulta.id || respondendoId) return;
+
+    setRespondendoId(consulta.id);
+    setAvisoResposta('');
+
+    try {
+      await responderConsulta(consulta.id, resposta);
+
+      setConsultas((atuais) =>
+        atuais.map((item) =>
+          item.id === consulta.id
+            ? { ...item, status: resposta }
+            : item
+        )
+      );
+
+      setAvisoResposta(
+        resposta === 'confirmada'
+          ? 'Consulta confirmada.'
+          : 'Consulta recusada.'
+      );
+    } catch (error) {
+      console.error('Erro ao responder consulta:', error);
+
+      setAvisoResposta(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível responder à consulta.'
+      );
+    } finally {
+      setRespondendoId(null);
+    }
+  }
 
   function abrirEdicao(consulta: Consulta) {
+    // Consultas marcadas pelo médico não podem ser editadas pelo paciente
+    if (consulta.origem === 'medico') return;
+
     if (!consulta.id) {
       console.error('Não foi possível editar: consulta sem ID.');
       return;
@@ -516,6 +626,10 @@ export default function ConsultasScreen() {
             </View>
           </View>
 
+          {avisoResposta !== '' && (
+            <Text style={styles.avisoResposta}>{avisoResposta}</Text>
+          )}
+
           {carregando ? (
             <View style={styles.carregando}>
               <ActivityIndicator
@@ -689,16 +803,27 @@ export default function ConsultasScreen() {
                     </View>
                   )}
 
-                  <View style={styles.editarHint}>
-                    <Text style={styles.editarHintTexto}>
-                      Toque para ver ou editar
-                    </Text>
-                    <Ionicons
-                      name="chevron-forward"
-                      size={17}
-                      color={C.primaryDark}
+                  {aguardandoResposta(proximaConsulta) ? (
+                    <BotoesResposta
+                      onResponder={(resposta) =>
+                        responder(proximaConsulta, resposta)
+                      }
+                      carregando={
+                        respondendoId === proximaConsulta.id
+                      }
                     />
-                  </View>
+                  ) : proximaConsulta.origem === 'medico' ? null : (
+                    <View style={styles.editarHint}>
+                      <Text style={styles.editarHintTexto}>
+                        Toque para ver ou editar
+                      </Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={17}
+                        color={C.primaryDark}
+                      />
+                    </View>
+                  )}
                 </Pressable>
               ) : (
                 <View style={styles.semFuturasCard}>
@@ -741,6 +866,12 @@ export default function ConsultasScreen() {
                           consulta={consulta}
                           onPress={() =>
                             abrirEdicao(consulta)
+                          }
+                          onResponder={(resposta) =>
+                            responder(consulta, resposta)
+                          }
+                          respondendo={
+                            respondendoId === consulta.id
                           }
                         />
                       )
@@ -1256,6 +1387,57 @@ const styles = StyleSheet.create({
     color: C.muted,
   },
 
+  avisoResposta: {
+    fontSize: 12,
+    color: C.primaryDark,
+    backgroundColor: C.primarySoft,
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+
+  botoesResposta: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+
+  botaoConfirmar: {
+    flex: 1,
+    height: 40,
+    borderRadius: 11,
+    backgroundColor: C.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  botaoConfirmarTexto: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  botaoRecusar: {
+    flex: 1,
+    height: 40,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: C.danger,
+    backgroundColor: C.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  botaoRecusarTexto: {
+    color: C.danger,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  botaoRespostaDesabilitado: {
+    opacity: 0.5,
+  },
+
   avisoInvalidas: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1279,4 +1461,3 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 });
-
