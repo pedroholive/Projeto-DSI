@@ -16,6 +16,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
 import { auth } from '@/firebaseConfig';
+import ModalConsultaFeedback, {
+  type ResumoConsulta,
+} from '@/components/Modalconsultafeedback';
 import { criarConsulta } from '@/services/consultaService';
 
 const C = {
@@ -104,6 +107,16 @@ export default function NovaConsultaScreen() {
   const [local, setLocal] = useState('');
   const [observacao, setObservacao] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [registrada, setRegistrada] = useState<ResumoConsulta | null>(null);
+
+  function limparFormulario() {
+    setEspecialidade('');
+    setMedico('');
+    setData('');
+    setHorario('');
+    setLocal('');
+    setObservacao('');
+  }
 
   const dataHoraInformada = useMemo(
     () => converterDataHora(data, horario),
@@ -173,12 +186,13 @@ export default function NovaConsultaScreen() {
         observacao: observacao.trim(),
       });
 
-      mensagem(
-        'Consulta cadastrada',
-        'A consulta foi adicionada à sua agenda.'
-      );
-
-      router.replace('/consultas');
+      setRegistrada({
+        especialidade: especialidade.trim(),
+        medico: medico.trim(),
+        data: data.trim(),
+        horario: horario.trim(),
+        local: local.trim(),
+      });
     } catch (error) {
       console.error('Erro ao cadastrar consulta:', error);
 
@@ -401,6 +415,21 @@ export default function NovaConsultaScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <ModalConsultaFeedback
+        visible={registrada !== null}
+        tipo="registrada"
+        consulta={registrada}
+        onConcluir={() => {
+          setRegistrada(null);
+          router.replace('/consultas');
+        }}
+        textoSecundario="Registrar outra"
+        onSecundario={() => {
+          setRegistrada(null);
+          limparFormulario();
+        }}
+      />
     </SafeAreaView>
   );
 }
