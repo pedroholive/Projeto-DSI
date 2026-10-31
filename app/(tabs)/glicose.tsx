@@ -8,7 +8,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,11 +18,7 @@ import type { User } from 'firebase/auth';
 import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 
 import { auth } from '@/firebaseConfig';
-import {
-  atualizarGlicemia,
-  excluirGlicemia,
-  listarGlicemias,
-} from '@/services/glicemiaService';
+import { listarGlicemias } from '@/services/glicemiaService';
 import type { Glicemia } from '@/services/glicemiaService';
 import {
   analisarGlicemias,
@@ -61,54 +56,17 @@ const periodos = [
   { texto: 'Todos', valor: 'todos' },
 ] as const;
 
-type FormEdicao = {
-  valor: string;
-  data: string;
-  horario: string;
-  contexto: string;
-  observacao: string;
-};
-
-const formVazio: FormEdicao = {
-  valor: '',
-  data: '',
-  horario: '',
-  contexto: '',
-  observacao: '',
-};
-
-function formatarData(valor: string) {
-  const numeros = valor.replace(/\D/g, '').slice(0, 8);
-  if (numeros.length <= 2) return numeros;
-  if (numeros.length <= 4) {
-    return `${numeros.slice(0, 2)}/${numeros.slice(2)}`;
-  }
-  return `${numeros.slice(0, 2)}/${numeros.slice(2, 4)}/${numeros.slice(4)}`;
-}
-
-function formatarHorario(valor: string) {
-  const numeros = valor.replace(/\D/g, '').slice(0, 4);
-  if (numeros.length <= 2) return numeros;
-  return `${numeros.slice(0, 2)}:${numeros.slice(2)}`;
-}
-
-function dataValida(valor: string) {
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(valor)) return false;
-  const [dia, mes, ano] = valor.split('/').map(Number);
-  if (ano < 1900 || mes < 1 || mes > 12 || dia < 1) return false;
-  return dia <= new Date(ano, mes, 0).getDate();
-}
-
-function horarioValido(valor: string) {
-  if (!/^\d{2}:\d{2}$/.test(valor)) return false;
-  const [hora, minuto] = valor.split(':').map(Number);
-  return hora >= 0 && hora <= 23 && minuto >= 0 && minuto <= 59;
-}
-
 function timestampRegistro(registro: Glicemia) {
   const [dia, mes, ano] = registro.data.split('/').map(Number);
   const [hora, minuto] = registro.horario.split(':').map(Number);
-  return new Date(ano, mes - 1, dia, hora || 0, minuto || 0).getTime();
+
+  return new Date(
+    ano,
+    mes - 1,
+    dia,
+    hora || 0,
+    minuto || 0
+  ).getTime();
 }
 
 function ordenarRegistros(registros: Glicemia[]) {
@@ -122,6 +80,7 @@ function mostrarMensagem(titulo: string, mensagem: string) {
     window.alert(`${titulo}\n\n${mensagem}`);
     return;
   }
+
   Alert.alert(titulo, mensagem);
 }
 
@@ -149,7 +108,11 @@ function classificarValor(valor: number) {
   };
 }
 
-function GraficoGlicemia({ registros }: { registros: Glicemia[] }) {
+function GraficoGlicemia({
+  registros,
+}: {
+  registros: Glicemia[];
+}) {
   const ordem = [...registros].sort(
     (a, b) => timestampRegistro(a) - timestampRegistro(b)
   );
@@ -160,12 +123,14 @@ function GraficoGlicemia({ registros }: { registros: Glicemia[] }) {
   const direita = 22;
   const topo = 26;
   const baixo = 38;
+
   const areaLargura = largura - esquerda - direita;
   const areaAltura = altura - topo - baixo;
 
   const valores = ordem.map((r) => Number(r.valor));
   const menor = Math.min(...valores);
   const maior = Math.max(...valores);
+
   const margem = Math.max(15, (maior - menor) * 0.15);
   const minimo = Math.max(0, menor - margem);
   const maximo = maior + margem;
@@ -175,16 +140,24 @@ function GraficoGlicemia({ registros }: { registros: Glicemia[] }) {
     const x =
       ordem.length === 1
         ? esquerda + areaLargura / 2
-        : esquerda + (indice / (ordem.length - 1)) * areaLargura;
+        : esquerda +
+          (indice / (ordem.length - 1)) * areaLargura;
 
-    const y = topo + ((maximo - Number(registro.valor)) / intervalo) * areaAltura;
+    const y =
+      topo +
+      ((maximo - Number(registro.valor)) / intervalo) *
+        areaAltura;
 
     return { x, y, registro };
   });
 
-  const linha = pontos.map((p) => `${p.x},${p.y}`).join(' ');
+  const linha = pontos
+    .map((p) => `${p.x},${p.y}`)
+    .join(' ');
+
   const marcas = Array.from({ length: 4 }, (_, indice) => {
     const fracao = indice / 3;
+
     return {
       y: topo + fracao * areaAltura,
       valor: maximo - fracao * intervalo,
@@ -192,7 +165,10 @@ function GraficoGlicemia({ registros }: { registros: Glicemia[] }) {
   });
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+    >
       <View style={{ width: largura, height: altura }}>
         <Svg width={largura} height={altura}>
           {marcas.map((marca, indice) => (
@@ -205,6 +181,7 @@ function GraficoGlicemia({ registros }: { registros: Glicemia[] }) {
                 stroke="#E5EFED"
                 strokeWidth={1}
               />
+
               <SvgText
                 x={esquerda - 7}
                 y={marca.y + 4}
@@ -229,7 +206,9 @@ function GraficoGlicemia({ registros }: { registros: Glicemia[] }) {
           )}
 
           {pontos.map((ponto, indice) => (
-            <React.Fragment key={ponto.registro.id ?? indice}>
+            <React.Fragment
+              key={ponto.registro.id ?? indice}
+            >
               <Circle
                 cx={ponto.x}
                 cy={ponto.y}
@@ -238,6 +217,7 @@ function GraficoGlicemia({ registros }: { registros: Glicemia[] }) {
                 stroke={C.card}
                 strokeWidth={2}
               />
+
               <SvgText
                 x={ponto.x}
                 y={Math.max(12, ponto.y - 11)}
@@ -248,6 +228,7 @@ function GraficoGlicemia({ registros }: { registros: Glicemia[] }) {
               >
                 {ponto.registro.valor}
               </SvgText>
+
               <SvgText
                 x={ponto.x}
                 y={altura - 13}
@@ -271,18 +252,20 @@ export default function GlicoseScreen() {
   const [usuario, setUsuario] = useState<User | null>(null);
   const [registros, setRegistros] = useState<Glicemia[]>([]);
   const [carregando, setCarregando] = useState(true);
-  const [salvando, setSalvando] = useState(false);
-  const [excluindoId, setExcluindoId] = useState<string | null>(null);
-
-  const [editandoId, setEditandoId] = useState<string | null>(null);
-  const [form, setForm] = useState<FormEdicao>(formVazio);
 
   const [periodoGrafico, setPeriodoGrafico] =
     useState<PeriodoGlicemia>('todos');
-  const [contextoGrafico, setContextoGrafico] = useState('Todos');
+
+  const [contextoGrafico, setContextoGrafico] =
+    useState('Todos');
 
   const registrosFiltrados = useMemo(
-    () => filtrarGlicemias(registros, periodoGrafico, contextoGrafico),
+    () =>
+      filtrarGlicemias(
+        registros,
+        periodoGrafico,
+        contextoGrafico
+      ),
     [registros, periodoGrafico, contextoGrafico]
   );
 
@@ -293,39 +276,52 @@ export default function GlicoseScreen() {
 
   const ultimaMedicao = registros[0] ?? null;
 
-  const carregarRegistros = useCallback(async (userId: string) => {
-    setCarregando(true);
+  const carregarRegistros = useCallback(
+    async (userId: string) => {
+      setCarregando(true);
 
-    try {
-      const dados = await listarGlicemias(userId);
-      if (auth.currentUser?.uid !== userId) return;
-      setRegistros(ordenarRegistros(dados));
-    } catch (error) {
-      console.error('Erro ao carregar glicemias:', error);
-      setRegistros([]);
-      mostrarMensagem('Erro', 'Não foi possível carregar as medições.');
-    } finally {
-      setCarregando(false);
-    }
-  }, []);
+      try {
+        const dados = await listarGlicemias(userId);
+
+        if (auth.currentUser?.uid !== userId) return;
+
+        setRegistros(ordenarRegistros(dados));
+      } catch (error) {
+        console.error('Erro ao carregar glicemias:', error);
+
+        setRegistros([]);
+
+        mostrarMensagem(
+          'Erro',
+          'Não foi possível carregar as medições.'
+        );
+      } finally {
+        setCarregando(false);
+      }
+    },
+    []
+  );
 
   useFocusEffect(
     useCallback(() => {
       let ativo = true;
 
-      const unsubscribe = onAuthStateChanged(auth, async (usuarioAtual) => {
-        if (!ativo) return;
+      const unsubscribe = onAuthStateChanged(
+        auth,
+        async (usuarioAtual) => {
+          if (!ativo) return;
 
-        setUsuario(usuarioAtual);
+          setUsuario(usuarioAtual);
 
-        if (!usuarioAtual) {
-          setRegistros([]);
-          setCarregando(false);
-          return;
+          if (!usuarioAtual) {
+            setRegistros([]);
+            setCarregando(false);
+            return;
+          }
+
+          await carregarRegistros(usuarioAtual.uid);
         }
-
-        await carregarRegistros(usuarioAtual.uid);
-      });
+      );
 
       return () => {
         ativo = false;
@@ -334,118 +330,11 @@ export default function GlicoseScreen() {
     }, [carregarRegistros])
   );
 
-  function abrirEdicao(registro: Glicemia) {
-    if (!registro.id) return;
-
-    setEditandoId(registro.id);
-    setForm({
-      valor: String(registro.valor),
-      data: registro.data,
-      horario: registro.horario,
-      contexto: registro.contexto,
-      observacao: registro.observacao ?? '',
-    });
-  }
-
-  function cancelarEdicao() {
-    setEditandoId(null);
-    setForm(formVazio);
-  }
-
-  function alterarCampo(campo: keyof FormEdicao, valor: string) {
-    setForm((anterior) => ({ ...anterior, [campo]: valor }));
-  }
-
-  async function salvarEdicao() {
-    const userId = auth.currentUser?.uid;
-    if (!userId || !editandoId) return;
-
-    const valor = Number(form.valor.trim().replace(',', '.'));
-
-    if (!Number.isFinite(valor) || valor < 20 || valor > 600) {
-      mostrarMensagem(
-        'Valor inválido',
-        'Informe um valor de glicose entre 20 e 600 mg/dL.'
-      );
-      return;
-    }
-
-    if (!dataValida(form.data)) {
-      mostrarMensagem('Data inválida', 'Informe uma data válida no formato DD/MM/AAAA.');
-      return;
-    }
-
-    if (!horarioValido(form.horario)) {
-      mostrarMensagem('Horário inválido', 'Informe um horário válido no formato HH:MM.');
-      return;
-    }
-
-    if (!form.contexto) {
-      mostrarMensagem('Campo obrigatório', 'Selecione o contexto da medição.');
-      return;
-    }
-
-    setSalvando(true);
-
-    try {
-      await atualizarGlicemia(editandoId, userId, {
-        valor,
-        data: form.data,
-        horario: form.horario,
-        contexto: form.contexto,
-        observacao: form.observacao,
-      });
-
-      cancelarEdicao();
-      await carregarRegistros(userId);
-      mostrarMensagem('Sucesso', 'Medição atualizada com sucesso.');
-    } catch (error) {
-      console.error('Erro ao atualizar glicemia:', error);
-      mostrarMensagem('Erro', 'Não foi possível atualizar a medição.');
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  async function executarExclusao(registro: Glicemia) {
-    const userId = auth.currentUser?.uid;
-    if (!userId || !registro.id) return;
-
-    setExcluindoId(registro.id);
-
-    try {
-      await excluirGlicemia(registro.id, userId);
-      if (editandoId === registro.id) cancelarEdicao();
-      await carregarRegistros(userId);
-      mostrarMensagem('Sucesso', 'Medição excluída com sucesso.');
-    } catch (error) {
-      console.error('Erro ao excluir glicemia:', error);
-      mostrarMensagem('Erro', 'Não foi possível excluir a medição.');
-    } finally {
-      setExcluindoId(null);
-    }
-  }
-
-  function confirmarExclusao(registro: Glicemia) {
-    if (Platform.OS === 'web') {
-      if (window.confirm('Deseja realmente excluir esta medição?')) {
-        void executarExclusao(registro);
-      }
-      return;
-    }
-
-    Alert.alert('Excluir medição', 'Deseja realmente excluir este registro?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Excluir',
-        style: 'destructive',
-        onPress: () => void executarExclusao(registro),
-      },
-    ]);
-  }
-
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView
+      style={styles.container}
+      edges={['top', 'left', 'right']}
+    >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -455,13 +344,18 @@ export default function GlicoseScreen() {
           <View style={styles.header}>
             <View>
               <Text style={styles.titulo}>Glicose</Text>
+
               <Text style={styles.descricao}>
                 Acompanhe suas medições de glicemia.
               </Text>
             </View>
 
             <View style={styles.headerIcon}>
-              <Ionicons name="water-outline" size={22} color={C.primaryDark} />
+              <Ionicons
+                name="water-outline"
+                size={22}
+                color={C.primaryDark}
+              />
             </View>
           </View>
 
@@ -476,14 +370,20 @@ export default function GlicoseScreen() {
           {carregando ? (
             <View style={styles.loading}>
               <ActivityIndicator color={C.primary} />
-              <Text style={styles.loadingTexto}>Carregando medições...</Text>
+
+              <Text style={styles.loadingTexto}>
+                Carregando medições...
+              </Text>
             </View>
           ) : (
             <>
               <View style={styles.ultimaCard}>
                 <View style={styles.cardTopRow}>
                   <View>
-                    <Text style={styles.cardLabel}>Última medição</Text>
+                    <Text style={styles.cardLabel}>
+                      Última medição
+                    </Text>
+
                     <Text style={styles.cardDescricao}>
                       Registro mais recente de glicemia
                     </Text>
@@ -493,13 +393,19 @@ export default function GlicoseScreen() {
                     <View
                       style={[
                         styles.statusTag,
-                        { backgroundColor: classificarValor(ultimaMedicao.valor).fundo },
+                        {
+                          backgroundColor:
+                            classificarValor(ultimaMedicao.valor).fundo,
+                        },
                       ]}
                     >
                       <Text
                         style={[
                           styles.statusTagTexto,
-                          { color: classificarValor(ultimaMedicao.valor).cor },
+                          {
+                            color:
+                              classificarValor(ultimaMedicao.valor).cor,
+                          },
                         ]}
                       >
                         {classificarValor(ultimaMedicao.valor).texto}
@@ -511,19 +417,34 @@ export default function GlicoseScreen() {
                 {ultimaMedicao ? (
                   <>
                     <View style={styles.valorRow}>
-                      <Text style={styles.valorPrincipal}>{ultimaMedicao.valor}</Text>
-                      <Text style={styles.unidade}>mg/dL</Text>
+                      <Text style={styles.valorPrincipal}>
+                        {ultimaMedicao.valor}
+                      </Text>
+
+                      <Text style={styles.unidade}>
+                        mg/dL
+                      </Text>
                     </View>
 
                     <View style={styles.metaRow}>
-                      <Ionicons name="time-outline" size={15} color={C.muted} />
+                      <Ionicons
+                        name="time-outline"
+                        size={15}
+                        color={C.muted}
+                      />
+
                       <Text style={styles.metaTexto}>
                         {ultimaMedicao.data} • {ultimaMedicao.horario}
                       </Text>
                     </View>
 
                     <View style={styles.contextoAtual}>
-                      <Ionicons name="restaurant-outline" size={15} color={C.primaryDark} />
+                      <Ionicons
+                        name="restaurant-outline"
+                        size={15}
+                        color={C.primaryDark}
+                      />
+
                       <Text style={styles.contextoAtualTexto}>
                         {ultimaMedicao.contexto}
                       </Text>
@@ -531,8 +452,16 @@ export default function GlicoseScreen() {
                   </>
                 ) : (
                   <View style={styles.estadoVazioInterno}>
-                    <Ionicons name="water-outline" size={28} color="#B8C4C1" />
-                    <Text style={styles.estadoVazioTitulo}>Nenhuma medição ainda</Text>
+                    <Ionicons
+                      name="water-outline"
+                      size={28}
+                      color="#B8C4C1"
+                    />
+
+                    <Text style={styles.estadoVazioTitulo}>
+                      Nenhuma medição ainda
+                    </Text>
+
                     <Text style={styles.estadoVazioTexto}>
                       Registre sua primeira glicemia para começar o acompanhamento.
                     </Text>
@@ -551,40 +480,61 @@ export default function GlicoseScreen() {
                 disabled={!usuario}
               >
                 <View style={styles.registrarIcone}>
-                  <Ionicons name="add" size={24} color={C.primary} />
+                  <Ionicons
+                    name="add"
+                    size={24}
+                    color={C.primary}
+                  />
                 </View>
 
                 <View style={styles.registrarConteudo}>
-                  <Text style={styles.registrarTitulo}>Registrar glicose</Text>
+                  <Text style={styles.registrarTitulo}>
+                    Registrar glicose
+                  </Text>
+
                   <Text style={styles.registrarDescricao}>
                     Adicione uma nova medição ao seu histórico.
                   </Text>
                 </View>
 
-                <Ionicons name="chevron-forward" size={22} color={C.primaryDark} />
+                <Ionicons
+                  name="chevron-forward"
+                  size={22}
+                  color={C.primaryDark}
+                />
               </Pressable>
 
               <View style={styles.evolucaoCard}>
-                <Text style={styles.secaoTitulo}>Evolução da glicemia</Text>
+                <Text style={styles.secaoTitulo}>
+                  Evolução da glicemia
+                </Text>
+
                 <Text style={styles.secaoDescricao}>
                   Filtre suas medições por período e contexto.
                 </Text>
 
-                <Text style={styles.filtroLabel}>Período</Text>
+                <Text style={styles.filtroLabel}>
+                  Período
+                </Text>
+
                 <View style={styles.filtrosWrap}>
                   {periodos.map((item) => (
                     <Pressable
                       key={item.texto}
                       style={[
                         styles.filtroBotao,
-                        periodoGrafico === item.valor && styles.filtroBotaoAtivo,
+                        periodoGrafico === item.valor &&
+                          styles.filtroBotaoAtivo,
                       ]}
-                      onPress={() => setPeriodoGrafico(item.valor)}
+                      onPress={() =>
+                        setPeriodoGrafico(item.valor)
+                      }
                     >
                       <Text
                         style={[
                           styles.filtroTexto,
-                          periodoGrafico === item.valor && styles.filtroTextoAtivo,
+                          periodoGrafico === item.valor &&
+                            styles.filtroTextoAtivo,
                         ]}
                       >
                         {item.texto}
@@ -593,7 +543,10 @@ export default function GlicoseScreen() {
                   ))}
                 </View>
 
-                <Text style={styles.filtroLabel}>Contexto</Text>
+                <Text style={styles.filtroLabel}>
+                  Contexto
+                </Text>
+
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -604,14 +557,18 @@ export default function GlicoseScreen() {
                       key={item}
                       style={[
                         styles.filtroBotao,
-                        contextoGrafico === item && styles.filtroBotaoAtivo,
+                        contextoGrafico === item &&
+                          styles.filtroBotaoAtivo,
                       ]}
-                      onPress={() => setContextoGrafico(item)}
+                      onPress={() =>
+                        setContextoGrafico(item)
+                      }
                     >
                       <Text
                         style={[
                           styles.filtroTexto,
-                          contextoGrafico === item && styles.filtroTextoAtivo,
+                          contextoGrafico === item &&
+                            styles.filtroTextoAtivo,
                         ]}
                       >
                         {item}
@@ -622,69 +579,66 @@ export default function GlicoseScreen() {
 
                 {registrosFiltrados.length === 0 ? (
                   <View style={styles.graficoVazio}>
-                    <Ionicons name="analytics-outline" size={30} color="#B8C4C1" />
+                    <Ionicons
+                      name="analytics-outline"
+                      size={30}
+                      color="#B8C4C1"
+                    />
+
                     <Text style={styles.estadoVazioTexto}>
                       Nenhuma medição encontrada para os filtros selecionados.
                     </Text>
                   </View>
                 ) : (
-                  <GraficoGlicemia registros={registrosFiltrados} />
+                  <GraficoGlicemia
+                    registros={registrosFiltrados}
+                  />
                 )}
               </View>
 
-              <View style={styles.resumoCard}>
-                <Text style={styles.secaoTitulo}>Resumo das medições</Text>
+              {analise.quantidade > 0 && (
+                <View style={styles.feedbackCard}>
+                  <Text style={styles.secaoTitulo}>
+                    Análise das medições
+                  </Text>
 
-                <View style={styles.resumoGrid}>
-                  <View style={styles.resumoItem}>
-                    <Text style={styles.resumoLabel}>Quantidade</Text>
-                    <Text style={styles.resumoValor}>{analise.quantidade}</Text>
-                  </View>
+                  <View style={styles.feedbackBox}>
+                    <Ionicons
+                      name="information-circle-outline"
+                      size={19}
+                      color={C.primaryDark}
+                    />
 
-                  <View style={styles.resumoItem}>
-                    <Text style={styles.resumoLabel}>Média</Text>
-                    <Text style={styles.resumoValor}>
-                      {analise.media === null ? '—' : analise.media.toFixed(1)}
+                    <Text style={styles.feedbackTexto}>
+                      {analise.feedback}
                     </Text>
-                    {analise.media !== null && <Text style={styles.resumoUnidade}>mg/dL</Text>}
-                  </View>
-
-                  <View style={styles.resumoItem}>
-                    <Text style={styles.resumoLabel}>Menor</Text>
-                    <Text style={styles.resumoValor}>
-                      {analise.menorValor ?? '—'}
-                    </Text>
-                    {analise.menorValor !== null && <Text style={styles.resumoUnidade}>mg/dL</Text>}
-                  </View>
-
-                  <View style={styles.resumoItem}>
-                    <Text style={styles.resumoLabel}>Maior</Text>
-                    <Text style={styles.resumoValor}>
-                      {analise.maiorValor ?? '—'}
-                    </Text>
-                    {analise.maiorValor !== null && <Text style={styles.resumoUnidade}>mg/dL</Text>}
                   </View>
                 </View>
-
-                {analise.quantidade > 0 && (
-                  <View style={styles.feedbackBox}>
-                    <Ionicons name="information-circle-outline" size={19} color={C.primaryDark} />
-                    <Text style={styles.feedbackTexto}>{analise.feedback}</Text>
-                  </View>
-                )}
-              </View>
+              )}
 
               <View style={styles.historicoHeader}>
-                <Text style={styles.secaoTitulo}>Medições recentes</Text>
+                <Text style={styles.secaoTitulo}>
+                  Medições recentes
+                </Text>
+
                 <Text style={styles.historicoContagem}>
-                  {registros.length} {registros.length === 1 ? 'registro' : 'registros'}
+                  {registros.length}{' '}
+                  {registros.length === 1 ? 'registro' : 'registros'}
                 </Text>
               </View>
 
               {registros.length === 0 ? (
                 <View style={styles.historicoVazio}>
-                  <Ionicons name="document-text-outline" size={30} color="#B8C4C1" />
-                  <Text style={styles.estadoVazioTitulo}>Seu histórico está vazio</Text>
+                  <Ionicons
+                    name="document-text-outline"
+                    size={30}
+                    color="#B8C4C1"
+                  />
+
+                  <Text style={styles.estadoVazioTitulo}>
+                    Seu histórico está vazio
+                  </Text>
+
                   <Text style={styles.estadoVazioTexto}>
                     As novas medições aparecerão aqui.
                   </Text>
@@ -695,176 +649,80 @@ export default function GlicoseScreen() {
                     const status = classificarValor(registro.valor);
 
                     return (
-                      <View key={registro.id} style={styles.registroCard}>
+                      <Pressable
+                        key={registro.id}
+                        style={styles.registroCard}
+                        onPress={() => {
+                          if (!registro.id) return;
+
+                          router.push({
+                            pathname: '/editar-glicose' as any,
+                            params: { id: registro.id },
+                          });
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Editar medição de ${registro.valor} mg por decilitro, em ${registro.data} às ${registro.horario}`}
+                      >
                         <View style={styles.registroTopo}>
                           <View>
                             <View style={styles.registroValorRow}>
-                              <Text style={styles.registroValor}>{registro.valor}</Text>
-                              <Text style={styles.registroUnidade}>mg/dL</Text>
+                              <Text style={styles.registroValor}>
+                                {registro.valor}
+                              </Text>
+
+                              <Text style={styles.registroUnidade}>
+                                mg/dL
+                              </Text>
                             </View>
+
                             <Text style={styles.registroData}>
                               {registro.data} • {registro.horario}
                             </Text>
                           </View>
 
-                          <View style={[styles.statusTag, { backgroundColor: status.fundo }]}>
-                            <Text style={[styles.statusTagTexto, { color: status.cor }]}>
-                              {status.texto}
-                            </Text>
+                          <View style={styles.registroTopoDireita}>
+                            <View
+                              style={[
+                                styles.statusTag,
+                                { backgroundColor: status.fundo },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.statusTagTexto,
+                                  { color: status.cor },
+                                ]}
+                              >
+                                {status.texto}
+                              </Text>
+                            </View>
+
+                            <Ionicons
+                              name="chevron-forward"
+                              size={17}
+                              color="#A0AAA7"
+                            />
                           </View>
                         </View>
 
                         <View style={styles.registroContextoRow}>
-                          <Ionicons name="restaurant-outline" size={14} color={C.muted} />
-                          <Text style={styles.registroContexto}>{registro.contexto}</Text>
+                          <Ionicons
+                            name="restaurant-outline"
+                            size={14}
+                            color={C.muted}
+                          />
+
+                          <Text style={styles.registroContexto}>
+                            {registro.contexto}
+                          </Text>
                         </View>
 
                         {!!registro.observacao && (
-                          <Text style={styles.registroObservacao}>{registro.observacao}</Text>
+                          <Text style={styles.registroObservacao}>
+                            {registro.observacao}
+                          </Text>
                         )}
-
-                        <View style={styles.acoesRow}>
-                          <Pressable
-                            style={styles.acaoEditar}
-                            onPress={() => abrirEdicao(registro)}
-                          >
-                            <Ionicons name="create-outline" size={17} color={C.primaryDark} />
-                            <Text style={styles.acaoEditarTexto}>Editar</Text>
-                          </Pressable>
-
-                          <Pressable
-                            style={styles.acaoExcluir}
-                            onPress={() => confirmarExclusao(registro)}
-                            disabled={excluindoId === registro.id}
-                          >
-                            <Ionicons name="trash-outline" size={17} color={C.danger} />
-                            <Text style={styles.acaoExcluirTexto}>
-                              {excluindoId === registro.id ? 'Excluindo...' : 'Excluir'}
-                            </Text>
-                          </Pressable>
-                        </View>
-
-                        {editandoId === registro.id && (
-                          <View style={styles.edicaoInline}>
-                            <View style={styles.edicaoHeader}>
-                              <View style={{ flex: 1 }}>
-                                <Text style={styles.edicaoTitulo}>Editar medição</Text>
-                                <Text style={styles.edicaoDescricao}>
-                                  Altere os dados e salve para atualizar o histórico.
-                                </Text>
-                              </View>
-
-                              <Pressable
-                                style={styles.fecharEdicao}
-                                onPress={cancelarEdicao}
-                                accessibilityLabel="Cancelar edição"
-                              >
-                                <Ionicons name="close" size={20} color={C.muted} />
-                              </Pressable>
-                            </View>
-
-                            <Text style={styles.label}>Glicemia (mg/dL)</Text>
-                            <TextInput
-                              value={form.valor}
-                              onChangeText={(valor) =>
-                                alterarCampo('valor', valor.replace(/\D/g, '').slice(0, 3))
-                              }
-                              keyboardType="numeric"
-                              style={styles.input}
-                              maxLength={3}
-                            />
-
-                            <View style={styles.camposRow}>
-                              <View style={styles.campoMetade}>
-                                <Text style={styles.label}>Data</Text>
-                                <TextInput
-                                  value={form.data}
-                                  onChangeText={(valor) =>
-                                    alterarCampo('data', formatarData(valor))
-                                  }
-                                  keyboardType="numeric"
-                                  style={styles.input}
-                                  maxLength={10}
-                                  placeholder="DD/MM/AAAA"
-                                  placeholderTextColor="#A9B5B2"
-                                />
-                              </View>
-
-                              <View style={styles.campoMetade}>
-                                <Text style={styles.label}>Horário</Text>
-                                <TextInput
-                                  value={form.horario}
-                                  onChangeText={(valor) =>
-                                    alterarCampo('horario', formatarHorario(valor))
-                                  }
-                                  keyboardType="numeric"
-                                  style={styles.input}
-                                  maxLength={5}
-                                  placeholder="HH:MM"
-                                  placeholderTextColor="#A9B5B2"
-                                />
-                              </View>
-                            </View>
-
-                            <Text style={styles.label}>Contexto</Text>
-                            <View style={styles.filtrosWrap}>
-                              {contextos.map((item) => (
-                                <Pressable
-                                  key={item}
-                                  style={[
-                                    styles.filtroBotao,
-                                    form.contexto === item && styles.filtroBotaoAtivo,
-                                  ]}
-                                  onPress={() => alterarCampo('contexto', item)}
-                                >
-                                  <Text
-                                    style={[
-                                      styles.filtroTexto,
-                                      form.contexto === item && styles.filtroTextoAtivo,
-                                    ]}
-                                  >
-                                    {item}
-                                  </Text>
-                                </Pressable>
-                              ))}
-                            </View>
-
-                            <Text style={styles.label}>Observação</Text>
-                            <TextInput
-                              value={form.observacao}
-                              onChangeText={(valor) => alterarCampo('observacao', valor)}
-                              style={[styles.input, styles.observacaoInput]}
-                              multiline
-                              textAlignVertical="top"
-                              placeholder="Opcional"
-                              placeholderTextColor="#A9B5B2"
-                            />
-
-                            <View style={styles.edicaoBotoes}>
-                              <Pressable
-                                style={styles.botaoSecundario}
-                                onPress={cancelarEdicao}
-                                disabled={salvando}
-                              >
-                                <Text style={styles.botaoSecundarioTexto}>Cancelar</Text>
-                              </Pressable>
-
-                              <Pressable
-                                style={[
-                                  styles.botaoPrimarioInline,
-                                  salvando && styles.desabilitado,
-                                ]}
-                                onPress={salvarEdicao}
-                                disabled={salvando}
-                              >
-                                <Text style={styles.botaoPrimarioTexto}>
-                                  {salvando ? 'Salvando...' : 'Salvar alterações'}
-                                </Text>
-                              </Pressable>
-                            </View>
-                          </View>
-                        )}
-                      </View>
+                      </Pressable>
                     );
                   })}
                 </View>
@@ -1060,19 +918,6 @@ const styles = StyleSheet.create({
     color: C.muted,
     marginTop: 3,
   },
-  edicaoCard: {
-    backgroundColor: C.card,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 18,
-    marginBottom: 12,
-  },
-  edicaoHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
   secaoTitulo: {
     fontSize: 16,
     fontWeight: '700',
@@ -1083,50 +928,6 @@ const styles = StyleSheet.create({
     color: C.muted,
     marginTop: 4,
     marginBottom: 12,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#52615E',
-    marginTop: 12,
-    marginBottom: 6,
-  },
-  input: {
-    minHeight: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: '#F8FAFA',
-    paddingHorizontal: 12,
-    fontSize: 13,
-    color: C.text,
-  },
-  camposRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  campoMetade: {
-    flex: 1,
-  },
-  observacaoInput: {
-    minHeight: 80,
-    paddingTop: 12,
-  },
-  botaoPrimario: {
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: C.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-  },
-  botaoPrimarioTexto: {
-    color: C.card,
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  desabilitado: {
-    opacity: 0.55,
   },
   evolucaoCard: {
     backgroundColor: C.card,
@@ -1178,41 +979,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
-  resumoCard: {
+  feedbackCard: {
     backgroundColor: C.card,
-    borderRadius: 22,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: '#E8EFED',
-    padding: 18,
-    marginBottom: 16,
-  },
-  resumoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 14,
-  },
-  resumoItem: {
-    width: '47%',
-    minHeight: 82,
-    borderRadius: 14,
-    backgroundColor: '#F7FAF9',
-    padding: 12,
-  },
-  resumoLabel: {
-    color: C.muted,
-    fontSize: 10,
-  },
-  resumoValor: {
-    color: C.text,
-    fontSize: 20,
-    fontWeight: '800',
-    marginTop: 7,
-  },
-  resumoUnidade: {
-    color: C.muted,
-    fontSize: 9,
-    marginTop: 2,
+    padding: 15,
+    marginBottom: 14,
   },
   feedbackBox: {
     flexDirection: 'row',
@@ -1255,12 +1028,17 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: '#E8EFED',
-    padding: 15,
+    padding: 11,
   },
   registroTopo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 10,
+  },
+  registroTopoDireita: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
   },
   registroValorRow: {
     flexDirection: 'row',
@@ -1268,7 +1046,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   registroValor: {
-    fontSize: 23,
+    fontSize: 20,
     fontWeight: '800',
     color: C.text,
   },
@@ -1285,7 +1063,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    marginTop: 10,
+    marginTop: 6,
   },
   registroContexto: {
     fontSize: 11,
@@ -1297,92 +1075,4 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 8,
   },
-  acoesRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 13,
-  },
-  edicaoInline: {
-    marginTop: 14,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#E8EFED',
-  },
-  edicaoTitulo: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: C.text,
-  },
-  edicaoDescricao: {
-    fontSize: 10,
-    color: C.muted,
-    marginTop: 3,
-    lineHeight: 15,
-  },
-  fecharEdicao: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F4F8F7',
-  },
-  edicaoBotoes: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 16,
-  },
-  botaoSecundario: {
-    flex: 1,
-    height: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  botaoSecundarioTexto: {
-    color: C.text,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  botaoPrimarioInline: {
-    flex: 1,
-    height: 46,
-    borderRadius: 12,
-    backgroundColor: C.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  acaoEditar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 9,
-    backgroundColor: C.primarySoft,
-  },
-  acaoEditarTexto: {
-    color: C.primaryDark,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  acaoExcluir: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 9,
-    backgroundColor: C.dangerSoft,
-  },
-  acaoExcluirTexto: {
-    color: C.danger,
-    fontSize: 11,
-    fontWeight: '700',
-  },
 });
-
