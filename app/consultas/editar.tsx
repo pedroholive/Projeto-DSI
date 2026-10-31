@@ -15,6 +15,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { auth } from '@/firebaseConfig';
+import ModalConsultaFeedback, {
+  type ResumoConsulta,
+  type TipoFeedbackConsulta,
+} from '@/components/Modalconsultafeedback';
 import {
   buscarConsultaPorId,
   atualizarConsulta,
@@ -23,6 +27,25 @@ import {
 
 type TipoMensagem = 'sucesso' | 'erro';
 type AcaoMensagem = 'voltar' | 'fechar';
+
+function mascararData(valor: string) {
+  const numeros = valor.replace(/\D/g, '').slice(0, 8);
+
+  if (numeros.length <= 2) return numeros;
+  if (numeros.length <= 4) {
+    return `${numeros.slice(0, 2)}/${numeros.slice(2)}`;
+  }
+
+  return `${numeros.slice(0, 2)}/${numeros.slice(2, 4)}/${numeros.slice(4)}`;
+}
+
+function mascararHorario(valor: string) {
+  const numeros = valor.replace(/\D/g, '').slice(0, 4);
+
+  if (numeros.length <= 2) return numeros;
+
+  return `${numeros.slice(0, 2)}:${numeros.slice(2)}`;
+}
 
 export default function EditarConsultaScreen() {
   const router = useRouter();
@@ -39,6 +62,10 @@ export default function EditarConsultaScreen() {
   const [salvando, setSalvando] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
   const [modalExcluirVisivel, setModalExcluirVisivel] = useState(false);
+  const [feedback, setFeedback] = useState<{
+    tipo: TipoFeedbackConsulta;
+    consulta: ResumoConsulta | null;
+  } | null>(null);
   const [mensagem, setMensagem] = useState<{
     titulo: string;
     descricao: string;
@@ -137,15 +164,17 @@ export default function EditarConsultaScreen() {
 
     try {
       setSalvando(true);
-      await atualizarConsulta(id, usuario.uid, {
-        especialidade, medico, data, horario, local, observacao,
-      });
-      setMensagem({
-        titulo: 'Consulta atualizada!',
-        descricao: 'As alterações foram salvas com sucesso.',
-        tipo: 'sucesso',
-        acao: 'voltar',
-      });
+      const dadosAtualizados = {
+        especialidade: especialidade.trim(),
+        medico: medico.trim(),
+        data: data.trim(),
+        horario: horario.trim(),
+        local: local.trim(),
+        observacao: observacao.trim(),
+      };
+
+      await atualizarConsulta(id, usuario.uid, dadosAtualizados);
+      setFeedback({ tipo: 'atualizada', consulta: dadosAtualizados });
     } catch (error) {
       console.error('Erro ao atualizar consulta:', error);
       mostrarErro('Erro ao salvar', 'Não foi possível atualizar a consulta. Tente novamente.');
@@ -172,12 +201,7 @@ export default function EditarConsultaScreen() {
       setExcluindo(true);
       await excluirConsulta(id, usuario.uid);
       setModalExcluirVisivel(false);
-      setMensagem({
-        titulo: 'Consulta excluída!',
-        descricao: 'Sua consulta foi excluída com sucesso.',
-        tipo: 'sucesso',
-        acao: 'voltar',
-      });
+      setFeedback({ tipo: 'excluida', consulta: null });
     } catch (error) {
       console.error('Erro ao excluir consulta:', error);
       setModalExcluirVisivel(false);
@@ -242,7 +266,7 @@ export default function EditarConsultaScreen() {
               <TextInput
                 style={styles.input}
                 value={data}
-                onChangeText={setData}
+                onChangeText={(valor) => setData(mascararData(valor))}
                 placeholder="DD/MM/AAAA"
                 placeholderTextColor="#A0AAA7"
                 keyboardType="numeric"
@@ -253,7 +277,7 @@ export default function EditarConsultaScreen() {
               <TextInput
                 style={styles.input}
                 value={horario}
-                onChangeText={setHorario}
+                onChangeText={(valor) => setHorario(mascararHorario(valor))}
                 placeholder="HH:MM"
                 placeholderTextColor="#A0AAA7"
                 keyboardType="numeric"
@@ -350,7 +374,17 @@ export default function EditarConsultaScreen() {
         </View>
       </Modal>
 
-    
+      <ModalConsultaFeedback
+        visible={feedback !== null}
+        tipo={feedback?.tipo ?? 'atualizada'}
+        consulta={feedback?.consulta ?? null}
+        textoConcluir="Voltar às consultas"
+        onConcluir={() => {
+          setFeedback(null);
+          router.back();
+        }}
+      />
+
       <Modal
         visible={mensagem !== null}
         transparent

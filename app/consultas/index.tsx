@@ -1,20 +1,27 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import ReanimatedSwipeable, {
+  type SwipeableMethods,
+} from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { auth } from '@/firebaseConfig';
 import {
   type Consulta,
+  excluirConsulta,
   listarConsultas,
   responderConsulta,
 } from '@/services/consultaService';
@@ -154,6 +161,87 @@ function obterStatusConsulta(consulta: Consulta, anterior: boolean) {
         fundo: C.primarySoft,
       };
   }
+}
+
+// Remove acentos e maiúsculas para a pesquisa
+function normalizar(texto: string) {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function correspondeABusca(consulta: Consulta, busca: string) {
+  const termo = normalizar(busca);
+
+  if (!termo) return true;
+
+  const campos = [
+    consulta.especialidade,
+    consulta.medico,
+    consulta.local,
+    consulta.observacao,
+    consulta.data,
+    consulta.horario,
+  ];
+
+  return campos.some((campo) => normalizar(campo ?? '').includes(termo));
+}
+
+// Arrastar o card para a esquerda revela Editar e Excluir
+function CardComSwipe({
+  habilitado,
+  onEditar,
+  onExcluir,
+  children,
+}: {
+  habilitado: boolean;
+  onEditar: () => void;
+  onExcluir: () => void;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<SwipeableMethods>(null);
+
+  if (!habilitado) return <>{children}</>;
+
+  return (
+    <ReanimatedSwipeable
+      ref={ref}
+      friction={2}
+      rightThreshold={40}
+      overshootRight={false}
+      renderRightActions={() => (
+        <View style={styles.acoesSwipe}>
+          <Pressable
+            style={[styles.acaoSwipe, styles.acaoEditar]}
+            onPress={() => {
+              ref.current?.close();
+              onEditar();
+            }}
+            accessibilityLabel="Editar consulta"
+          >
+            <Ionicons name="create-outline" size={21} color="#FFFFFF" />
+            <Text style={styles.acaoSwipeTexto}>Editar</Text>
+          </Pressable>
+
+          <Pressable
+            style={[styles.acaoSwipe, styles.acaoExcluir]}
+            onPress={() => {
+              ref.current?.close();
+              onExcluir();
+            }}
+            accessibilityLabel="Excluir consulta"
+          >
+            <Ionicons name="trash-outline" size={21} color="#FFFFFF" />
+            <Text style={styles.acaoSwipeTexto}>Excluir</Text>
+          </Pressable>
+        </View>
+      )}
+    >
+      {children}
+    </ReanimatedSwipeable>
+  );
 }
 
 function DiaCalendario({
@@ -378,6 +466,40 @@ export default function ConsultasScreen() {
   const [agora, setAgora] = useState(() => new Date());
   const [respondendoId, setRespondendoId] = useState<string | null>(null);
   const [avisoResposta, setAvisoResposta] = useState('');
+  const [busca, setBusca] = useState('');
+  const [consultaParaExcluir, setConsultaParaExcluir] =
+    useState<Consulta | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
+
+  async function confirmarExclusao() {
+    const alvo = consultaParaExcluir;
+    const usuario = auth.currentUser;
+
+    if (!alvo?.id || !usuario || excluindo) return;
+
+    setExcluindo(true);
+    setAvisoResposta('');
+
+    try {
+      await excluirConsulta(alvo.id, usuario.uid);
+
+      setConsultas((atuais) =>
+        atuais.filter((item) => item.id !== alvo.id)
+      );
+      setAvisoResposta('Consulta excluída.');
+    } catch (error) {
+      console.error('Erro ao excluir consulta:', error);
+
+      setAvisoResposta(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível excluir a consulta.'
+      );
+    } finally {
+      setExcluindo(false);
+      setConsultaParaExcluir(null);
+    }
+  }
 
   async function responder(
     consulta: Consulta,
@@ -419,7 +541,12 @@ export default function ConsultasScreen() {
 
   function abrirEdicao(consulta: Consulta) {
     // Consultas marcadas pelo médico não podem ser editadas pelo paciente
-    if (consulta.origem === 'medico') return;
+    if (consulta.origem === 'medico') {
+      setAvisoResposta(
+        'Esta consulta foi agendada pelo seu médico e só ele pode alterá-la.'
+      );
+      return;
+    }
 
     if (!consulta.id) {
       console.error('Não foi possível editar: consulta sem ID.');
@@ -490,6 +617,13 @@ export default function ConsultasScreen() {
     [agora]
   );
 
+  const consultasFiltradas = useMemo(
+    () => consultas.filter((c) => correspondeABusca(c, busca)),
+    [consultas, busca]
+  );
+
+  const buscando = busca.trim() !== '';
+
   const {
     proximaConsulta,
     outrasConsultas,
@@ -500,7 +634,7 @@ export default function ConsultasScreen() {
     const anteriores: Array<Consulta & { dataHora: Date }> = [];
     const invalidas: Consulta[] = [];
 
-    consultas.forEach((consulta) => {
+    consultasFiltradas.forEach((consulta) => {
       const dataHora = converterDataHora(
         consulta.data,
         consulta.horario
@@ -539,13 +673,19 @@ export default function ConsultasScreen() {
       consultasAnteriores: anteriores,
       consultasInvalidas: invalidas,
     };
-  }, [consultas, agora]);
+  }, [consultasFiltradas, agora]);
 
   const totalFuturas =
     (proximaConsulta ? 1 : 0) +
     outrasConsultas.length;
 
+  const totalResultados =
+    totalFuturas +
+    consultasAnteriores.length +
+    consultasInvalidas.length;
+
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaView
       style={styles.container}
       edges={['top', 'left', 'right']}
@@ -626,6 +766,35 @@ export default function ConsultasScreen() {
             </View>
           </View>
 
+          <View style={styles.buscaCaixa}>
+            <Ionicons name="search-outline" size={19} color={C.muted} />
+
+            <TextInput
+              style={styles.buscaInput}
+              value={busca}
+              onChangeText={setBusca}
+              placeholder="Pesquisar por especialidade, médico ou local"
+              placeholderTextColor="#A4B0AD"
+              returnKeyType="search"
+              autoCorrect={false}
+              accessibilityLabel="Pesquisar consultas"
+            />
+
+            {busca !== '' && (
+              <Pressable
+                onPress={() => setBusca('')}
+                hitSlop={10}
+                accessibilityLabel="Limpar pesquisa"
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={19}
+                  color="#A4B0AD"
+                />
+              </Pressable>
+            )}
+          </View>
+
           {avisoResposta !== '' && (
             <Text style={styles.avisoResposta}>{avisoResposta}</Text>
           )}
@@ -692,8 +861,33 @@ export default function ConsultasScreen() {
                 </Text>
               </Pressable>
             </View>
+          ) : buscando && totalResultados === 0 ? (
+            <View style={styles.estadoVazio}>
+              <View style={styles.iconeVazio}>
+                <Ionicons
+                  name="search-outline"
+                  size={32}
+                  color={C.primaryDark}
+                />
+              </View>
+
+              <Text style={styles.vazioTitulo}>
+                Nenhum resultado
+              </Text>
+
+              <Text style={styles.vazioDescricao}>
+                Nenhuma consulta corresponde a "{busca.trim()}".
+              </Text>
+            </View>
           ) : (
             <>
+              {buscando && (
+                <Text style={styles.buscaResultado}>
+                  {totalResultados}{' '}
+                  {totalResultados === 1 ? 'resultado' : 'resultados'}
+                </Text>
+              )}
+
               <View style={styles.secaoCabecalho}>
                 <Text style={styles.secaoTitulo}>
                   Próxima consulta
@@ -858,22 +1052,30 @@ export default function ConsultasScreen() {
                   <View style={styles.lista}>
                     {outrasConsultas.map(
                       (consulta, indice) => (
-                        <CardConsulta
+                        <CardComSwipe
                           key={
                             consulta.id ??
                             `futura-${indice}`
                           }
-                          consulta={consulta}
-                          onPress={() =>
-                            abrirEdicao(consulta)
+                          habilitado={consulta.origem !== 'medico'}
+                          onEditar={() => abrirEdicao(consulta)}
+                          onExcluir={() =>
+                            setConsultaParaExcluir(consulta)
                           }
-                          onResponder={(resposta) =>
-                            responder(consulta, resposta)
-                          }
-                          respondendo={
-                            respondendoId === consulta.id
-                          }
-                        />
+                        >
+                          <CardConsulta
+                            consulta={consulta}
+                            onPress={() =>
+                              abrirEdicao(consulta)
+                            }
+                            onResponder={(resposta) =>
+                              responder(consulta, resposta)
+                            }
+                            respondendo={
+                              respondendoId === consulta.id
+                            }
+                          />
+                        </CardComSwipe>
                       )
                     )}
                   </View>
@@ -895,17 +1097,25 @@ export default function ConsultasScreen() {
                   <View style={styles.lista}>
                     {consultasAnteriores.map(
                       (consulta, indice) => (
-                        <CardConsulta
+                        <CardComSwipe
                           key={
                             consulta.id ??
                             `anterior-${indice}`
                           }
-                          consulta={consulta}
-                          anterior
-                          onPress={() =>
-                            abrirEdicao(consulta)
+                          habilitado={consulta.origem !== 'medico'}
+                          onEditar={() => abrirEdicao(consulta)}
+                          onExcluir={() =>
+                            setConsultaParaExcluir(consulta)
                           }
-                        />
+                        >
+                          <CardConsulta
+                            consulta={consulta}
+                            anterior
+                            onPress={() =>
+                              abrirEdicao(consulta)
+                            }
+                          />
+                        </CardComSwipe>
                       )
                     )}
                   </View>
@@ -935,17 +1145,25 @@ export default function ConsultasScreen() {
                   <View style={styles.lista}>
                     {consultasInvalidas.map(
                       (consulta, indice) => (
-                        <CardConsulta
+                        <CardComSwipe
                           key={
                             consulta.id ??
                             `invalida-${indice}`
                           }
-                          consulta={consulta}
-                          invalida
-                          onPress={() =>
-                            abrirEdicao(consulta)
+                          habilitado={consulta.origem !== 'medico'}
+                          onEditar={() => abrirEdicao(consulta)}
+                          onExcluir={() =>
+                            setConsultaParaExcluir(consulta)
                           }
-                        />
+                        >
+                          <CardConsulta
+                            consulta={consulta}
+                            invalida
+                            onPress={() =>
+                              abrirEdicao(consulta)
+                            }
+                          />
+                        </CardComSwipe>
                       )
                     )}
                   </View>
@@ -955,7 +1173,66 @@ export default function ConsultasScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={consultaParaExcluir !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!excluindo) setConsultaParaExcluir(null);
+        }}
+      >
+        <View style={styles.modalFundo}>
+          <View style={styles.modalConteudo}>
+            <View style={styles.modalIcone}>
+              <Ionicons
+                name="trash-outline"
+                size={30}
+                color={C.danger}
+              />
+            </View>
+
+            <Text style={styles.modalTitulo}>Excluir consulta?</Text>
+
+            <Text style={styles.modalDescricao}>
+              {consultaParaExcluir
+                ? `${consultaParaExcluir.especialidade} em ${consultaParaExcluir.data} às ${consultaParaExcluir.horario}. Esta ação não pode ser desfeita.`
+                : ''}
+            </Text>
+
+            <View style={styles.modalBotoes}>
+              <Pressable
+                style={styles.modalBotaoCancelar}
+                disabled={excluindo}
+                onPress={() => setConsultaParaExcluir(null)}
+              >
+                <Text style={styles.modalBotaoCancelarTexto}>
+                  Cancelar
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.modalBotaoExcluir,
+                  excluindo && { opacity: 0.7 },
+                ]}
+                disabled={excluindo}
+                onPress={confirmarExclusao}
+              >
+                {excluindo ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalBotaoExcluirTexto}>
+                    Excluir
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
 
@@ -1385,6 +1662,139 @@ const styles = StyleSheet.create({
     fontSize: 10,
     lineHeight: 15,
     color: C.muted,
+  },
+
+  buscaCaixa: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: 48,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+    backgroundColor: C.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+
+  buscaInput: {
+    flex: 1,
+    fontSize: 14,
+    color: C.text,
+    paddingVertical: 0,
+  },
+
+  buscaResultado: {
+    fontSize: 12,
+    color: C.muted,
+    marginBottom: 10,
+  },
+
+  acoesSwipe: {
+    flexDirection: 'row',
+    marginLeft: 8,
+    gap: 8,
+  },
+
+  acaoSwipe: {
+    width: 78,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+
+  acaoEditar: {
+    backgroundColor: C.primaryDark,
+  },
+
+  acaoExcluir: {
+    backgroundColor: C.danger,
+  },
+
+  acaoSwipeTexto: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
+  modalFundo: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 42, 42, 0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+
+  modalConteudo: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: C.card,
+    borderRadius: 22,
+    padding: 24,
+    alignItems: 'center',
+  },
+
+  modalIcone: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: C.dangerSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+
+  modalTitulo: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: C.text,
+    marginBottom: 8,
+  },
+
+  modalDescricao: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: C.muted,
+    textAlign: 'center',
+    marginBottom: 22,
+  },
+
+  modalBotoes: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+
+  modalBotaoCancelar: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  modalBotaoCancelarTexto: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: C.text,
+  },
+
+  modalBotaoExcluir: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: C.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  modalBotaoExcluirTexto: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 
   avisoResposta: {
