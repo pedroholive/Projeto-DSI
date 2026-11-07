@@ -1,9 +1,25 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
-import { useFocusEffect, useRouter, type Href } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+} from 'firebase/firestore';
+import {
+  useFocusEffect,
+  useRouter,
+  type Href,
+} from 'expo-router';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,10 +30,21 @@ import {
   TextInput,
   View,
 } from 'react-native';
-
 import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { auth, db } from '../firebaseConfig';
-import { listarPacientesVinculados } from '../services/pacientesVinculadosService';
+
+import {
+  listarPacientesVinculados,
+} from '../services/pacientesVinculadosService';
+
+import {
+  listarAlertasMedico,
+} from '../services/alertasService';
+
+import {
+  contarAlertasNaoVisualizados,
+} from '../services/alertasVisualizadosService';
 
 type DoctorProfile = {
   nome?: string;
@@ -30,7 +57,6 @@ type LinkedPatient = {
   id: string;
   nome: string;
 };
-
 
 const C = {
   background: '#F4F8F7',
@@ -47,13 +73,22 @@ const C = {
   warningSoft: '#FFF3D6',
 };
 
-// Consulta "DD/MM/AAAA" -> true se for hoje ou depois
 function isTodayOrFuture(date?: string) {
   const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(date ?? '');
-  if (!m) return false;
-  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+
+  if (!m) {
+    return false;
+  }
+
+  const d = new Date(
+    Number(m[3]),
+    Number(m[2]) - 1,
+    Number(m[1])
+  );
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
   return d >= today;
 }
 
@@ -71,6 +106,10 @@ function doctorDisplayName(
     : `Dr(a). ${rawName}`;
 }
 
+function badgeNumber(value: number): string {
+  return value > 99 ? '99+' : String(value);
+}
+
 export default function DoctorHomeScreen() {
   const router = useRouter();
 
@@ -84,10 +123,29 @@ export default function DoctorHomeScreen() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  const [patients, setPatients] = useState<LinkedPatient[]>([]);
-  const [scheduledCount, setScheduledCount] = useState(0);
-  const [dataLoading, setDataLoading] = useState(true);
-  const [dataError, setDataError] = useState('');
+  const [patients, setPatients] =
+    useState<LinkedPatient[]>([]);
+
+  const [scheduledCount, setScheduledCount] =
+    useState(0);
+
+  const [alertCount, setAlertCount] =
+    useState(0);
+
+  const [unreadAlertCount, setUnreadAlertCount] =
+    useState(0);
+
+  const [alertLoading, setAlertLoading] =
+    useState(true);
+
+  const [alertError, setAlertError] =
+    useState(false);
+
+  const [dataLoading, setDataLoading] =
+    useState(true);
+
+  const [dataError, setDataError] =
+    useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(
@@ -96,6 +154,11 @@ export default function DoctorHomeScreen() {
         setUser(currentUser);
 
         if (!currentUser) {
+          setProfile(null);
+          setPatients([]);
+          setScheduledCount(0);
+          setAlertCount(0);
+          setUnreadAlertCount(0);
           setLoading(false);
           router.replace('/login');
           return;
@@ -133,23 +196,25 @@ export default function DoctorHomeScreen() {
     return unsubscribe;
   }, [router]);
 
-  // Dados reais: pacientes vinculados e consultas agendadas pelo médico
   useFocusEffect(
     useCallback(() => {
       let active = true;
 
       async function loadData() {
         const uid = user?.uid;
-        if (!uid) return;
+
+        if (!uid) {
+          return;
+        }
 
         setDataLoading(true);
         setDataError('');
 
         let failed = '';
 
-        // Pacientes vinculados (o nome vem do próprio vínculo: nomePaciente)
         try {
-          const loaded = await listarPacientesVinculados();
+          const loaded =
+            await listarPacientesVinculados();
 
           if (active) {
             setPatients(
@@ -159,47 +224,116 @@ export default function DoctorHomeScreen() {
             );
           }
         } catch (error) {
-          console.error('Erro ao carregar vínculos da home:', error);
-          failed = `pacientes (${(error as { code?: string }).code ?? 'erro'})`;
+          console.error(
+            'Erro ao carregar vínculos da home:',
+            error
+          );
+
+          failed = `pacientes (${
+            (error as { code?: string }).code ?? 'erro'
+          })`;
+
+          if (active) {
+            setPatients([]);
+          }
         }
 
-        // Consultas agendadas pelo médico (independente dos pacientes)
         try {
           const appointmentsSnap = await getDocs(
             query(
               collection(db, 'consultas'),
               where('medicoId', '==', uid),
-              // exigido pelas regras: só consultas marcadas por médico
               where('origem', '==', 'medico')
             )
           );
 
           const scheduled = appointmentsSnap.docs
-            .map((d) => d.data())
+            .map((documento) => documento.data())
             .filter(
-              (c) =>
-                (c.status === 'aguardando_confirmacao' ||
-                  c.status === 'confirmada') &&
-                isTodayOrFuture(c.data)
+              (consulta) =>
+                (
+                  consulta.status ===
+                    'aguardando_confirmacao' ||
+                  consulta.status === 'confirmada'
+                ) &&
+                isTodayOrFuture(consulta.data)
             ).length;
 
-          if (active) setScheduledCount(scheduled);
+          if (active) {
+            setScheduledCount(scheduled);
+          }
         } catch (error) {
-          console.error('Erro ao carregar consultas da home:', error);
+          console.error(
+            'Erro ao carregar consultas da home:',
+            error
+          );
+
           failed +=
             (failed ? ' e ' : '') +
-            `consultas (${(error as { code?: string }).code ?? 'erro'})`;
+            `consultas (${
+              (error as { code?: string }).code ?? 'erro'
+            })`;
+
+          if (active) {
+            setScheduledCount(0);
+          }
         }
 
         if (active) {
           setDataError(
-            failed ? `Não foi possível carregar: ${failed}.` : ''
+            failed
+              ? `Não foi possível carregar: ${failed}.`
+              : ''
           );
+
           setDataLoading(false);
         }
       }
 
-      loadData();
+      async function loadAlerts() {
+        const medicoId = user?.uid;
+
+        if (!medicoId) {
+          return;
+        }
+
+        setAlertLoading(true);
+        setAlertError(false);
+
+        try {
+          const loaded = await listarAlertasMedico();
+
+          const naoVisualizados =
+            await contarAlertasNaoVisualizados(
+              medicoId,
+              loaded
+            );
+
+          if (active) {
+            setAlertCount(loaded.length);
+            setUnreadAlertCount(naoVisualizados);
+            setAlertError(false);
+          }
+        } catch (error) {
+          console.error(
+            'Erro ao carregar notificações da home:',
+            error
+          );
+
+          if (active) {
+            setAlertCount(0);
+            setUnreadAlertCount(0);
+            setAlertError(true);
+          }
+        } finally {
+          if (active) {
+            setAlertLoading(false);
+          }
+        }
+      }
+
+      void loadData();
+      void loadAlerts();
 
       return () => {
         active = false;
@@ -208,16 +342,28 @@ export default function DoctorHomeScreen() {
   );
 
   const filteredPatients = useMemo(() => {
-    const term = search.trim().toLocaleLowerCase('pt-BR');
+    const term = search
+      .trim()
+      .toLocaleLowerCase('pt-BR');
 
-    if (!term) return patients;
+    if (!term) {
+      return patients;
+    }
 
     return patients.filter(
       (patient) =>
-        patient.nome.toLocaleLowerCase('pt-BR').includes(term) ||
-        patient.id.toLocaleLowerCase('pt-BR').includes(term)
+        patient.nome
+          .toLocaleLowerCase('pt-BR')
+          .includes(term) ||
+        patient.id
+          .toLocaleLowerCase('pt-BR')
+          .includes(term)
     );
   }, [patients, search]);
+
+  const abrirAlertas = useCallback(() => {
+    router.push('/alertas-medico' as Href);
+  }, [router]);
 
   if (loading) {
     return (
@@ -226,6 +372,7 @@ export default function DoctorHomeScreen() {
           size="large"
           color={C.primary}
         />
+
         <Text style={styles.loadingText}>
           Carregando perfil...
         </Text>
@@ -243,7 +390,6 @@ export default function DoctorHomeScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* CABEÇALHO DO MÉDICO */}
         <View style={styles.header}>
           <View style={styles.doctorIcon}>
             <Ionicons
@@ -267,6 +413,7 @@ export default function DoctorHomeScreen() {
             >
               {profile?.especialidade ||
                 'Profissional de saúde'}
+
               {profile?.crm
                 ? ` • CRM ${profile.crm}`
                 : ''}
@@ -275,21 +422,39 @@ export default function DoctorHomeScreen() {
 
           <Pressable
             style={styles.notificationButton}
-            onPress={() => router.push('/alertas-medico' as Href)}
-            accessibilityLabel="Notificações"
+            onPress={abrirAlertas}
+            accessibilityRole="button"
+            accessibilityLabel={
+              unreadAlertCount > 0
+                ? `${unreadAlertCount} alertas não visualizados`
+                : 'Abrir alertas'
+            }
           >
             <Ionicons
-              name="notifications-outline"
+              name={
+                unreadAlertCount > 0
+                  ? 'notifications'
+                  : 'notifications-outline'
+              }
               size={24}
               color={C.primary}
             />
+
+            {unreadAlertCount > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>
+                  {badgeNumber(unreadAlertCount)}
+                </Text>
+              </View>
+            )}
           </Pressable>
         </View>
 
-        {/* ACESSO À GLICEMIA PROFISSIONAL */}
         <Pressable
           onPress={() =>
-            router.push('/glicemia-profissional' as Href)
+            router.push(
+              '/glicemia-profissional' as Href
+            )
           }
           style={({ pressed }) => [
             styles.glicemiaCard,
@@ -324,7 +489,6 @@ export default function DoctorHomeScreen() {
           />
         </Pressable>
 
-        {/* ACESSO AO VÍNCULO COM PACIENTES */}
         <Pressable
           onPress={() =>
             router.push('/meus-pacientes' as Href)
@@ -350,7 +514,8 @@ export default function DoctorHomeScreen() {
             </Text>
 
             <Text style={styles.glicemiaDescription}>
-              Solicite o vínculo por código e acompanhe seus pacientes.
+              Solicite o vínculo por código e acompanhe
+              seus pacientes.
             </Text>
           </View>
 
@@ -361,7 +526,6 @@ export default function DoctorHomeScreen() {
           />
         </Pressable>
 
-        {/* BUSCA */}
         <View style={styles.searchBox}>
           <Ionicons
             name="search-outline"
@@ -381,6 +545,7 @@ export default function DoctorHomeScreen() {
           {search.length > 0 && (
             <Pressable
               onPress={() => setSearch('')}
+              accessibilityRole="button"
               accessibilityLabel="Limpar busca"
             >
               <Ionicons
@@ -392,7 +557,6 @@ export default function DoctorHomeScreen() {
           )}
         </View>
 
-        {/* RESUMO */}
         <Text style={styles.sectionTitle}>
           VISÃO GERAL DE HOJE
         </Text>
@@ -400,34 +564,67 @@ export default function DoctorHomeScreen() {
         <View style={styles.summaryRow}>
           <SummaryCard
             label="Pacientes"
-            value={dataLoading ? '…' : String(patients.length)}
+            value={
+              dataLoading
+                ? '…'
+                : String(patients.length)
+            }
             suffix="ativos"
             color={C.primary}
           />
 
           <SummaryCard
             label="Alertas"
-            value="—"
-            suffix="em breve"
-            color={C.muted}
+            value={
+              alertLoading
+                ? '…'
+                : alertError
+                  ? '—'
+                  : String(alertCount)
+            }
+            suffix={
+              alertError
+                ? 'indisponíveis'
+                : 'identificados'
+            }
+            color={
+              alertCount > 0
+                ? C.danger
+                : C.primary
+            }
+            badge={
+              !alertLoading &&
+              !alertError &&
+              unreadAlertCount > 0
+                ? `${badgeNumber(unreadAlertCount)} novo${
+                    unreadAlertCount === 1 ? '' : 's'
+                  }`
+                : undefined
+            }
           />
 
           <SummaryCard
             label="Consultas"
-            value={dataLoading ? '…' : String(scheduledCount)}
+            value={
+              dataLoading
+                ? '…'
+                : String(scheduledCount)
+            }
             suffix="agendadas"
             color={C.text}
           />
         </View>
 
-        {/* PACIENTES VINCULADOS */}
         <View style={styles.alertTitleRow}>
           <Text style={styles.sectionTitle}>
             SEUS PACIENTES
           </Text>
 
           <Pressable
-            onPress={() => router.push('/meus-pacientes' as Href)}
+            onPress={() =>
+              router.push('/meus-pacientes' as Href)
+            }
+            accessibilityRole="button"
           >
             <Text style={styles.seeAll}>
               Ver todos ({patients.length})
@@ -436,12 +633,17 @@ export default function DoctorHomeScreen() {
         </View>
 
         {dataError !== '' && (
-          <Text style={styles.errorText}>{dataError}</Text>
+          <Text style={styles.errorText}>
+            {dataError}
+          </Text>
         )}
 
         <View style={styles.alertList}>
           {dataLoading ? (
-            <ActivityIndicator size="large" color={C.primary} />
+            <ActivityIndicator
+              size="large"
+              color={C.primary}
+            />
           ) : filteredPatients.length > 0 ? (
             filteredPatients.map((patient) => (
               <PatientCard
@@ -482,7 +684,6 @@ export default function DoctorHomeScreen() {
         </View>
       </ScrollView>
 
-      {/* BARRA INFERIOR */}
       <View style={styles.bottomBar}>
         <BottomItem
           icon="people-outline"
@@ -494,11 +695,14 @@ export default function DoctorHomeScreen() {
         />
 
         <BottomItem
-          icon="notifications-outline"
-          label="Alertas"
-          onPress={() =>
-            router.push('/alertas-medico' as Href)
+          icon={
+            unreadAlertCount > 0
+              ? 'notifications'
+              : 'notifications-outline'
           }
+          label="Alertas"
+          notificationCount={unreadAlertCount}
+          onPress={abrirAlertas}
         />
 
         <BottomItem
@@ -633,23 +837,41 @@ function BottomItem({
   icon,
   label,
   active = false,
+  notificationCount = 0,
   onPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   active?: boolean;
+  notificationCount?: number;
   onPress?: () => void;
 }) {
   return (
     <Pressable
       style={styles.bottomItem}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={
+        notificationCount > 0
+          ? `${label}: ${notificationCount} alertas não visualizados`
+          : label
+      }
     >
-      <Ionicons
-        name={icon}
-        size={24}
-        color={active ? C.primary : C.muted}
-      />
+      <View style={styles.bottomIconContainer}>
+        <Ionicons
+          name={icon}
+          size={24}
+          color={active ? C.primary : C.muted}
+        />
+
+        {notificationCount > 0 && (
+          <View style={styles.bottomBadge}>
+            <Text style={styles.bottomBadgeText}>
+              {badgeNumber(notificationCount)}
+            </Text>
+          </View>
+        )}
+      </View>
 
       <Text
         style={[
@@ -668,7 +890,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: C.background,
   },
-
   loading: {
     flex: 1,
     alignItems: 'center',
@@ -676,24 +897,20 @@ const styles = StyleSheet.create({
     backgroundColor: C.background,
     gap: 12,
   },
-
   loadingText: {
     color: C.muted,
     fontSize: 14,
   },
-
   content: {
     paddingHorizontal: 20,
     paddingTop: 18,
     paddingBottom: 118,
   },
-
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 24,
   },
-
   doctorIcon: {
     width: 54,
     height: 54,
@@ -704,24 +921,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   headerText: {
     flex: 1,
     marginHorizontal: 14,
   },
-
   doctorName: {
     color: C.text,
     fontSize: 22,
     fontWeight: '700',
   },
-
   specialty: {
     color: C.muted,
     fontSize: 13,
     marginTop: 3,
   },
-
   notificationButton: {
     width: 44,
     height: 44,
@@ -729,8 +942,27 @@ const styles = StyleSheet.create({
     backgroundColor: C.primaryPale,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
-
+  notificationBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 4,
+    borderRadius: 10,
+    backgroundColor: C.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: C.background,
+  },
+  notificationBadgeText: {
+    color: C.card,
+    fontSize: 10,
+    fontWeight: '800',
+  },
   glicemiaCard: {
     backgroundColor: C.card,
     borderRadius: 18,
@@ -742,7 +974,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 13,
   },
-
   glicemiaIcon: {
     width: 50,
     height: 50,
@@ -751,24 +982,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   glicemiaInfo: {
     flex: 1,
   },
-
   glicemiaTitle: {
     color: C.text,
     fontSize: 16,
     fontWeight: '700',
   },
-
   glicemiaDescription: {
     color: C.muted,
     fontSize: 12,
     marginTop: 5,
     lineHeight: 18,
   },
-
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -780,28 +1007,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 26,
   },
-
   searchInput: {
     flex: 1,
     color: C.text,
     fontSize: 15,
     marginHorizontal: 10,
   },
-
   sectionTitle: {
     color: C.text,
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0.25,
   },
-
   summaryRow: {
     flexDirection: 'row',
     gap: 10,
     marginTop: 14,
     marginBottom: 28,
   },
-
   summaryCard: {
     flex: 1,
     minHeight: 132,
@@ -811,19 +1034,16 @@ const styles = StyleSheet.create({
     borderColor: C.border,
     padding: 14,
   },
-
   summaryLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
   },
-
   summaryLabel: {
     color: C.muted,
     fontSize: 12,
     fontWeight: '600',
   },
-
   badge: {
     color: C.danger,
     backgroundColor: C.dangerSoft,
@@ -833,36 +1053,30 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '700',
   },
-
   summaryValue: {
     fontSize: 34,
     fontWeight: '800',
     marginTop: 14,
   },
-
   summarySuffix: {
     color: C.muted,
     fontSize: 11,
     marginTop: 1,
   },
-
   alertTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 14,
   },
-
   seeAll: {
     color: C.primary,
     fontSize: 14,
     fontWeight: '700',
   },
-
   alertList: {
     gap: 12,
   },
-
   patientCard: {
     minHeight: 100,
     flexDirection: 'row',
@@ -873,11 +1087,9 @@ const styles = StyleSheet.create({
     borderColor: C.border,
     padding: 14,
   },
-
   cardPressed: {
     opacity: 0.78,
   },
-
   patientAvatar: {
     width: 52,
     height: 52,
@@ -887,17 +1099,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-
   patientInfo: {
     flex: 1,
   },
-
   patientHeading: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-
   patientName: {
     flex: 1,
     color: C.text,
@@ -905,18 +1114,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginRight: 8,
   },
-
   patientTime: {
     color: C.muted,
     fontSize: 12,
   },
-
   patientMeta: {
     color: C.muted,
     fontSize: 13,
     marginTop: 3,
   },
-
   measureRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -924,7 +1130,6 @@ const styles = StyleSheet.create({
     gap: 7,
     marginTop: 10,
   },
-
   alertBadge: {
     borderRadius: 8,
     paddingHorizontal: 8,
@@ -932,24 +1137,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
-
   measureValue: {
     color: C.text,
     fontSize: 18,
     fontWeight: '800',
   },
-
   measureUnit: {
     color: C.muted,
     fontSize: 12,
   },
-
   errorText: {
     color: C.danger,
     fontSize: 14,
     marginBottom: 12,
   },
-
   emptyState: {
     backgroundColor: C.card,
     borderRadius: 18,
@@ -958,20 +1159,17 @@ const styles = StyleSheet.create({
     padding: 30,
     alignItems: 'center',
   },
-
   emptyTitle: {
     color: C.text,
     fontWeight: '700',
     fontSize: 15,
     marginTop: 10,
   },
-
   emptyText: {
     color: C.muted,
     fontSize: 13,
     marginTop: 4,
   },
-
   bottomBar: {
     position: 'absolute',
     left: 0,
@@ -987,19 +1185,42 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 14,
   },
-
   bottomItem: {
     flex: 1,
     alignItems: 'center',
     gap: 4,
   },
-
+  bottomIconContainer: {
+    width: 34,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  bottomBadge: {
+    position: 'absolute',
+    top: -7,
+    right: -11,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 3,
+    borderRadius: 9,
+    backgroundColor: C.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: C.card,
+  },
+  bottomBadgeText: {
+    color: C.card,
+    fontSize: 9,
+    fontWeight: '800',
+  },
   bottomLabel: {
     color: C.muted,
     fontSize: 11,
     fontWeight: '500',
   },
-
   bottomLabelActive: {
     color: C.primary,
     fontWeight: '700',

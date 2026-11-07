@@ -105,8 +105,6 @@ async function verificarMedico(
   }
 }
 
-// PACIENTE: GERAR CONVITE
-
 export async function gerarCodigoVinculo():
   Promise<CodigoVinculoGerado> {
   const pacienteId = usuarioAutenticado();
@@ -135,8 +133,6 @@ export async function gerarCodigoVinculo():
     expiraEm: expiraEm.toMillis(),
   };
 }
-
-// MÉDICO: SOLICITAR VÍNCULO PELO CÓDIGO
 
 export async function solicitarVinculoPorCodigo(
   codigo: string
@@ -188,6 +184,7 @@ export async function solicitarVinculoPorCodigo(
 
     if (
       typeof pacienteId !== 'string' ||
+      !pacienteId.trim() ||
       pacienteId === profissionalId
     ) {
       throw new Error('Paciente inválido.');
@@ -196,17 +193,63 @@ export async function solicitarVinculoPorCodigo(
     const vinculoId =
       `${profissionalId}_${pacienteId}`;
 
-    transaction.set(
-      doc(db, 'vinculos', vinculoId),
-      {
+    const vinculoRef = doc(
+      db,
+      'vinculos',
+      vinculoId
+    );
+
+    const vinculoSnapshot =
+      await transaction.get(vinculoRef);
+
+    if (vinculoSnapshot.exists()) {
+      const vinculoAtual = vinculoSnapshot.data();
+
+      if (
+        vinculoAtual.profissionalId !== profissionalId ||
+        vinculoAtual.pacienteId !== pacienteId
+      ) {
+        throw new Error(
+          'Os dados do vínculo existente são inválidos.'
+        );
+      }
+
+      if (vinculoAtual.status === 'ativo') {
+        throw new Error(
+          'Este paciente já possui vínculo ativo com você.'
+        );
+      }
+
+      if (vinculoAtual.status === 'pendente') {
+        throw new Error(
+          'Já existe uma solicitação pendente para este paciente.'
+        );
+      }
+
+      if (
+        vinculoAtual.status !== 'revogado' &&
+        vinculoAtual.status !== 'recusado'
+      ) {
+        throw new Error(
+          'Não é possível renovar este vínculo.'
+        );
+      }
+
+      transaction.update(vinculoRef, {
+        status: 'pendente',
+        conviteCodigo: token,
+        atualizadoEm: serverTimestamp(),
+      });
+    } else {
+      transaction.set(vinculoRef, {
         profissionalId,
         pacienteId,
         status: 'pendente',
         conviteCodigo: token,
         criadoEm: serverTimestamp(),
         atualizadoEm: serverTimestamp(),
-      }
-    );
+      });
+    }
 
     transaction.update(conviteRef, {
       status: 'utilizado',
@@ -219,8 +262,6 @@ export async function solicitarVinculoPorCodigo(
   });
 }
 
-// SOLICITAÇÃO DIRETA DESATIVADA
-
 export async function solicitarVinculo(
   pacienteId: string
 ): Promise<void> {
@@ -232,8 +273,6 @@ export async function solicitarVinculo(
     'Utilize um convite temporário para solicitar vínculo.'
   );
 }
-
-// PACIENTE: ACEITAR OU RECUSAR
 
 export async function responderVinculo(
   vinculoId: string,
@@ -283,8 +322,6 @@ export async function responderVinculo(
   });
 }
 
-// PACIENTE: LISTAR VÍNCULOS
-
 export async function listarVinculosPaciente():
   Promise<Vinculo[]> {
   const pacienteId = usuarioAutenticado();
@@ -301,8 +338,6 @@ export async function listarVinculosPaciente():
     ...(item.data() as Omit<Vinculo, 'id'>),
   }));
 
-  // Atualiza vínculos ativos criados antes
-  // da inclusão do campo nomePaciente.
   const semNome = vinculos.filter(
     (v) =>
       v.status === 'ativo' &&
@@ -339,8 +374,6 @@ export async function listarVinculosPaciente():
   return vinculos;
 }
 
-// MÉDICO: LISTAR VÍNCULOS
-
 export async function listarVinculosProfissional():
   Promise<Vinculo[]> {
   const profissionalId = usuarioAutenticado();
@@ -357,8 +390,6 @@ export async function listarVinculosProfissional():
     ...(item.data() as Omit<Vinculo, 'id'>),
   }));
 }
-
-// PACIENTE: REVOGAR VÍNCULO
 
 export async function revogarVinculo(
   vinculoId: string
