@@ -9,11 +9,13 @@ import {
   getDoc,
   updateDoc,
   deleteDoc,
+  deleteField,
   runTransaction,
   onSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db, auth} from '@/firebaseConfig';
+import { geocodificarEndereco } from '@/services/geocodificacaoservice';
 
 
 export type StatusConsulta =
@@ -25,6 +27,17 @@ export type StatusConsulta =
 
 export type OrigemConsulta = 'pessoal' | 'medico';
 
+// Converte o endereço em coordenadas. Se não achar, devolve {} e a consulta
+// é salva normalmente, sem mapa.
+async function coordenadasDoLocal(
+  local: string
+): Promise<{ latitude?: number; longitude?: number }> {
+  const coordenadas = await geocodificarEndereco(local);
+  return coordenadas
+    ? { latitude: coordenadas.latitude, longitude: coordenadas.longitude }
+    : {};
+}
+
 export interface Consulta {
   id?: string;
   userId: string;
@@ -35,6 +48,8 @@ export interface Consulta {
   horario: string;
   local: string;
   observacao?: string;
+  latitude?: number;
+  longitude?: number;
 
   pacienteId?: string;
   medicoId?: string | null;
@@ -104,6 +119,8 @@ export async function criarConsultaMedica(
   const nomeMedico =
     medicoSnapshot.data().nome ?? 'Médico responsável';
 
+  const coordenadas = await coordenadasDoLocal(dados.local);
+
   await addDoc(collection(db, 'consultas'), {
     // Compatibilidade com a listagem atual
     userId: dados.pacienteId,
@@ -121,6 +138,7 @@ export async function criarConsultaMedica(
     horario: dados.horario.trim(),
     local: dados.local.trim(),
     observacao: dados.observacao?.trim() ?? '',
+    ...coordenadas,
 
     createdAt: serverTimestamp(),
   });
@@ -132,6 +150,8 @@ export async function criarConsulta(
   consulta: Consulta
 ): Promise<void> {
   try {
+    const coordenadas = await coordenadasDoLocal(consulta.local);
+
     await addDoc(collection(db, 'consultas'), {
       userId: consulta.userId,
 
@@ -149,6 +169,7 @@ export async function criarConsulta(
       horario: consulta.horario.trim(),
       local: consulta.local.trim(),
       observacao: consulta.observacao?.trim() ?? '',
+      ...coordenadas,
 
       createdAt: serverTimestamp(),
     });
@@ -250,7 +271,25 @@ export async function atualizarConsulta(
     );
   }
 
-  // 4. Atualizar os dados
+  // 4. Coordenadas: só busca de novo se o local mudou ou se ainda não havia
+  const localNovo = dadosAtualizados.local.trim();
+  const mudouLocal = localNovo !== String(consulta.local ?? '').trim();
+  const jaTinhaCoordenadas =
+    typeof consulta.latitude === 'number' &&
+    typeof consulta.longitude === 'number';
+
+  let coordenadas: { latitude?: number; longitude?: number } = {};
+
+  if (mudouLocal || !jaTinhaCoordenadas) {
+    coordenadas = await coordenadasDoLocal(localNovo);
+  } else {
+    coordenadas = {
+      latitude: consulta.latitude as number,
+      longitude: consulta.longitude as number,
+    };
+  }
+
+  // 5. Atualizar os dados
   await updateDoc(referencia, {
     especialidade: dadosAtualizados.especialidade.trim(),
     medico: dadosAtualizados.medico.trim(),
@@ -258,6 +297,9 @@ export async function atualizarConsulta(
     horario: dadosAtualizados.horario.trim(),
     local: dadosAtualizados.local.trim(),
     observacao: dadosAtualizados.observacao?.trim() ?? '',
+    // Se o novo endereço não foi encontrado, as coordenadas antigas são apagadas
+    latitude: coordenadas.latitude ?? deleteField(),
+    longitude: coordenadas.longitude ?? deleteField(),
     updatedAt: serverTimestamp(),
   });
 }
@@ -462,4 +504,35 @@ export function acompanharConsultasMedico(
       onError?.(error);
     }
   );
+}
+
+// ===== ACRESCENTAR AO FINAL DE services/consultaService.ts =====
+// Confira se o import do firebase/firestore já tem: doc, updateDoc, deleteDoc, serverTimestamp.
+// Se faltar algum, acrescente à lista de imports existente.
+
+// Médico cancela a consulta que ele criou
+export async function cancelarConsultaMedico(consultaId: string): Promise<void> {
+  await updateDoc(doc(db, 'consultas', consultaId), {
+    status: 'cancelada',
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// Médico muda data/horário; o paciente precisa confirmar de novo
+export async function reagendarConsultaMedico(
+  consultaId: string,
+  data: string,
+  horario: string
+): Promise<void> {
+  await updateDoc(doc(db, 'consultas', consultaId), {
+    data,
+    horario,
+    status: 'aguardando_confirmacao',
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// Médico exclui a consulta que ele criou
+export async function excluirConsultaMedico(consultaId: string): Promise<void> {
+  await deleteDoc(doc(db, 'consultas', consultaId));
 }

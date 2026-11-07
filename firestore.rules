@@ -1,0 +1,636 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // FUNÇÕES AUXILIARES
+
+    function autenticado() {
+      return request.auth != null;
+    }
+
+    function dono(uid) {
+      return autenticado()
+        && request.auth.uid == uid;
+    }
+
+    function usuario(uid) {
+      return get(
+        /databases/$(database)/documents/usuarios/$(uid)
+      ).data;
+    }
+
+    function medicoVerificado(uid) {
+      return autenticado()
+        && exists(
+          /databases/$(database)/documents/usuarios/$(uid)
+        )
+        && usuario(uid).perfil == 'professional'
+        && usuario(uid).especialidade == 'Médico'
+        && usuario(uid).get('verificado', false) == true;
+    }
+
+    function vinculoAtivo(medicoId, pacienteId) {
+      let id = medicoId + '_' + pacienteId;
+
+      let caminho =
+        /databases/$(database)/documents/vinculos/$(id);
+
+      return exists(caminho)
+        && get(caminho).data.status == 'ativo'
+        && get(caminho).data.profissionalId == medicoId
+        && get(caminho).data.pacienteId == pacienteId;
+    }
+
+    // PERFIS DOS USUÁRIOS
+
+    match /usuarios/{userId} {
+
+      allow get: if dono(userId);
+
+      allow list: if false;
+
+      allow create: if dono(userId)
+        && request.resource.data.perfil in [
+          'patient', 'professional'
+        ]
+        && request.resource.data.verificado == false
+        && request.resource.data.keys().hasAll([
+          'nome',
+          'email',
+          'perfil',
+          'verificado'
+        ]);
+
+      allow update: if dono(userId)
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly([
+            'nome',
+            'telefone',
+            'telefoneEmergencia'
+          ]);
+
+      allow delete: if false;
+
+      // REGISTROS DE PRESSÃO ARTERIAL
+
+      match /registrosPressao/{registroId} {
+
+        allow read: if dono(userId);
+
+        allow create: if dono(userId);
+
+        allow update: if dono(userId);
+
+        allow delete: if dono(userId);
+      }
+    }
+
+    // CÓDIGOS TEMPORÁRIOS DE VÍNCULO
+
+    match /codigosVinculo/{codigoId} {
+
+      function tokenValido() {
+        return codigoId.matches('[0-9a-f]{64}');
+      }
+
+      function conviteDisponivel(dados) {
+        return dados.status == 'disponivel'
+          && dados.expiraEm is timestamp
+          && dados.criadoEm is timestamp
+          && dados.expiraEm ==
+            dados.criadoEm + duration.value(10, 'm')
+          && dados.expiraEm > request.time;
+      }
+
+      allow get: if tokenValido() && (
+        medicoVerificado(request.auth.uid)
+        ||
+        (
+          autenticado()
+          && resource.data.pacienteId == request.auth.uid
+        )
+      );
+
+      allow list: if false;
+
+      allow create: if autenticado()
+        && tokenValido()
+        && get(
+          /databases/$(database)/documents/usuarios/$(request.auth.uid)
+        ).data.perfil == 'patient'
+        && request.resource.data.keys().hasOnly([
+          'pacienteId',
+          'status',
+          'criadoEm',
+          'expiraEm'
+        ])
+        && request.resource.data.keys().hasAll([
+          'pacienteId',
+          'status',
+          'criadoEm',
+          'expiraEm'
+        ])
+        && request.resource.data.pacienteId == request.auth.uid
+        && request.resource.data.status == 'disponivel'
+        && request.resource.data.criadoEm is timestamp
+        && request.resource.data.criadoEm >=
+          request.time - duration.value(2, 'm')
+        && request.resource.data.criadoEm <=
+          request.time + duration.value(2, 'm')
+        && request.resource.data.expiraEm ==
+          request.resource.data.criadoEm +
+          duration.value(10, 'm');
+
+      allow update: if medicoVerificado(request.auth.uid)
+        && conviteDisponivel(resource.data)
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly([
+            'status',
+            'utilizadoPor',
+            'utilizadoEm',
+            'vinculoId'
+          ])
+        && request.resource.data.status == 'utilizado'
+        && request.resource.data.utilizadoPor == request.auth.uid
+        && request.resource.data.utilizadoEm == request.time
+        && request.resource.data.vinculoId ==
+          request.auth.uid + '_' + resource.data.pacienteId
+        && !exists(
+          /databases/$(database)/documents/vinculos/$(request.resource.data.vinculoId)
+        )
+        && getAfter(
+          /databases/$(database)/documents/vinculos/$(request.resource.data.vinculoId)
+        ).data.profissionalId == request.auth.uid
+        && getAfter(
+          /databases/$(database)/documents/vinculos/$(request.resource.data.vinculoId)
+        ).data.pacienteId == resource.data.pacienteId
+        && getAfter(
+          /databases/$(database)/documents/vinculos/$(request.resource.data.vinculoId)
+        ).data.conviteCodigo == codigoId
+        && getAfter(
+          /databases/$(database)/documents/vinculos/$(request.resource.data.vinculoId)
+        ).data.status == 'pendente';
+
+      allow delete: if false;
+    }
+
+    // CONTROLE DE CÓDIGOS DE VÍNCULO
+
+    match /controleCodigosVinculo/{pacienteId} {
+      allow read, write: if false;
+    }
+
+    // VÍNCULOS ENTRE MÉDICOS E PACIENTES
+
+    match /vinculos/{vinculoId} {
+
+      allow get, list: if autenticado()
+        && (
+          resource.data.pacienteId == request.auth.uid
+          ||
+          resource.data.profissionalId == request.auth.uid
+        );
+
+      allow create: if medicoVerificado(request.auth.uid)
+        && request.resource.data.keys().hasOnly([
+          'profissionalId',
+          'pacienteId',
+          'status',
+          'criadoEm',
+          'atualizadoEm',
+          'conviteCodigo'
+        ])
+        && request.resource.data.keys().hasAll([
+          'profissionalId',
+          'pacienteId',
+          'status',
+          'criadoEm',
+          'atualizadoEm',
+          'conviteCodigo'
+        ])
+        && request.resource.data.profissionalId == request.auth.uid
+        && request.resource.data.pacienteId is string
+        && vinculoId ==
+          request.auth.uid + '_' + request.resource.data.pacienteId
+        && request.resource.data.status == 'pendente'
+        && request.resource.data.criadoEm == request.time
+        && request.resource.data.atualizadoEm == request.time
+        && request.resource.data.conviteCodigo is string
+        && request.resource.data.conviteCodigo.matches('[0-9a-f]{64}')
+        && exists(
+          /databases/$(database)/documents/codigosVinculo/$(request.resource.data.conviteCodigo)
+        )
+        && get(
+          /databases/$(database)/documents/codigosVinculo/$(request.resource.data.conviteCodigo)
+        ).data.status == 'disponivel'
+        && get(
+          /databases/$(database)/documents/codigosVinculo/$(request.resource.data.conviteCodigo)
+        ).data.expiraEm > request.time
+        && get(
+          /databases/$(database)/documents/codigosVinculo/$(request.resource.data.conviteCodigo)
+        ).data.pacienteId == request.resource.data.pacienteId
+        && getAfter(
+          /databases/$(database)/documents/codigosVinculo/$(request.resource.data.conviteCodigo)
+        ).data.status == 'utilizado'
+        && getAfter(
+          /databases/$(database)/documents/codigosVinculo/$(request.resource.data.conviteCodigo)
+        ).data.utilizadoPor == request.auth.uid
+        && getAfter(
+          /databases/$(database)/documents/codigosVinculo/$(request.resource.data.conviteCodigo)
+        ).data.vinculoId == vinculoId;
+
+      // O nome precisa coincidir com o perfil
+      // do próprio paciente autenticado.
+
+      function nomePacienteCorreto() {
+        return request.resource.data.get(
+          'nomePaciente', ''
+        ) is string
+          && request.resource.data.nomePaciente ==
+            usuario(request.auth.uid).nome
+          && request.resource.data.nomePaciente.size() > 0;
+      }
+
+      allow update: if autenticado()
+        && resource.data.pacienteId == request.auth.uid
+        && (
+          // Aceitar ou recusar.
+          (
+            resource.data.status == 'pendente'
+            && request.resource.data.status in [
+              'ativo', 'recusado'
+            ]
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                'status',
+                'atualizadoEm',
+                'nomePaciente'
+              ])
+            && request.resource.data.atualizadoEm == request.time
+            && (
+              request.resource.data.status == 'recusado'
+              || nomePacienteCorreto()
+            )
+          )
+          ||
+          // Revogar vínculo ativo.
+          (
+            resource.data.status == 'ativo'
+            && request.resource.data.status == 'revogado'
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                'status',
+                'atualizadoEm'
+              ])
+            && request.resource.data.atualizadoEm == request.time
+          )
+          ||
+          // Sincronizar nome em vínculos antigos.
+          (
+            resource.data.status == 'ativo'
+            && request.resource.data.status == 'ativo'
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                'nomePaciente'
+              ])
+            && nomePacienteCorreto()
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    // CONSULTAS
+
+    match /consultas/{consultaId} {
+
+      function pessoal(dados) {
+        return dados.get('origem', 'pessoal')
+          == 'pessoal';
+      }
+
+      function camposConsulta() {
+        return [
+          'especialidade',
+          'medico',
+          'data',
+          'horario',
+          'local',
+          'observacao',
+          'latitude',
+          'longitude'
+        ];
+      }
+
+      allow get, list: if autenticado()
+        && (
+          resource.data.userId == request.auth.uid
+          ||
+          (
+            resource.data.get('origem', '') == 'medico'
+            && resource.data.get('medicoId', '') ==
+              request.auth.uid
+          )
+        );
+
+      allow create: if autenticado()
+        && (
+          (
+            request.resource.data.userId == request.auth.uid
+
+            && pessoal(request.resource.data)
+
+            && request.resource.data.get(
+              'pacienteId', request.auth.uid
+            ) == request.auth.uid
+
+            && request.resource.data.get(
+              'criadoPorId', request.auth.uid
+            ) == request.auth.uid
+
+            && request.resource.data.get(
+              'medicoId', null
+            ) == null
+
+            && request.resource.data.get(
+              'status', 'registro_pessoal'
+            ) == 'registro_pessoal'
+          )
+          ||
+          (
+            request.resource.data.origem == 'medico'
+
+            && request.resource.data.status ==
+              'aguardando_confirmacao'
+
+            && request.resource.data.medicoId ==
+              request.auth.uid
+
+            && request.resource.data.criadoPorId ==
+              request.auth.uid
+
+            && request.resource.data.userId ==
+              request.resource.data.pacienteId
+
+            && medicoVerificado(request.auth.uid)
+
+            && vinculoAtivo(
+              request.auth.uid,
+              request.resource.data.pacienteId
+            )
+          )
+        )
+        && request.resource.data.keys().hasAll([
+          'userId',
+          'especialidade',
+          'medico',
+          'data',
+          'horario',
+          'local'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'userId',
+          'pacienteId',
+          'medicoId',
+          'criadoPorId',
+          'origem',
+          'status',
+          'especialidade',
+          'medico',
+          'data',
+          'horario',
+          'local',
+          'observacao',
+          'latitude',
+          'longitude',
+          'createdAt'
+        ])
+        && request.resource.data.especialidade is string
+        && request.resource.data.medico is string
+        && request.resource.data.data is string
+        && request.resource.data.horario is string
+        && request.resource.data.local is string
+        && request.resource.data.get(
+          'observacao', ''
+        ) is string
+        && request.resource.data.get(
+          'latitude', 0
+        ) is number
+        && request.resource.data.get(
+          'longitude', 0
+        ) is number
+        && request.resource.data.get(
+          'createdAt', request.time
+        ) == request.time;
+
+      allow update: if autenticado()
+        && (
+          (
+            resource.data.userId == request.auth.uid
+
+            && pessoal(resource.data)
+
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly(
+                camposConsulta().concat(['updatedAt'])
+              )
+
+            && request.resource.data.get(
+              'updatedAt', null
+            ) == request.time
+          )
+          ||
+          (
+            resource.data.get('origem', '') == 'medico'
+
+            && resource.data.pacienteId == request.auth.uid
+
+            && resource.data.status ==
+              'aguardando_confirmacao'
+
+            && request.resource.data.status in [
+              'confirmada', 'recusada'
+            ]
+
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                'status',
+                'respondidoEm',
+                'updatedAt'
+              ])
+
+            && request.resource.data.respondidoEm ==
+              request.time
+
+            && request.resource.data.updatedAt ==
+              request.time
+          )
+          ||
+          (
+            resource.data.get('origem', '') == 'medico'
+
+            && resource.data.get('medicoId', '') == request.auth.uid
+
+            && medicoVerificado(request.auth.uid)
+
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                'status',
+                'data',
+                'horario',
+                'updatedAt'
+              ])
+
+            && request.resource.data.status in [
+              'cancelada',
+              'aguardando_confirmacao'
+            ]
+
+            && request.resource.data.updatedAt == request.time
+          )
+        );
+
+      allow delete: if autenticado()
+        && (
+          (
+            resource.data.userId == request.auth.uid
+            && pessoal(resource.data)
+          )
+          ||
+          (
+            resource.data.get('origem', '') == 'medico'
+            && resource.data.get('medicoId', '') == request.auth.uid
+          )
+        );
+    }
+
+    // GLICEMIA
+
+    match /glicemias/{glicemiaId} {
+
+      allow create: if autenticado()
+        && request.resource.data.userId ==
+          request.auth.uid;
+
+      allow read: if autenticado()
+        && (
+          resource.data.userId == request.auth.uid
+          ||
+          (
+            medicoVerificado(request.auth.uid)
+            &&
+            vinculoAtivo(
+              request.auth.uid,
+              resource.data.userId
+            )
+          )
+        );
+
+      allow update: if autenticado()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+
+      allow delete: if autenticado()
+        && resource.data.userId == request.auth.uid;
+    }
+
+    // MEDICAMENTOS
+
+    match /medicamentos/{medicamentoId} {
+
+      function camposMedicamento() {
+        return [
+          'nome', 'dosagem', 'unidade', 'forma',
+          'frequencia', 'horarios', 'duracao',
+          'dataInicial', 'dataFinal', 'instrucoes',
+          'lembrete', 'lembreteMinutos'
+        ];
+      }
+
+      function medicamentoValido(dados) {
+        return dados.nome is string
+          && dados.nome.size() > 0
+          && dados.nome.size() <= 100
+          && dados.dosagem is string
+          && dados.unidade is string
+          && dados.forma is string
+          && dados.frequencia is number
+          && dados.horarios is list
+          && dados.horarios.size() > 0
+          && dados.horarios.size() <= 24
+          && dados.duracao in ['continuo', 'periodo']
+          && dados.dataInicial is string
+          && dados.dataFinal is string
+          && dados.instrucoes is string
+          && dados.instrucoes.size() <= 500
+          && dados.lembrete is bool
+          && dados.lembreteMinutos is number;
+      }
+
+      allow get, list: if autenticado()
+        && resource.data.userId == request.auth.uid;
+
+      allow create: if autenticado()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasAll(
+          camposMedicamento().concat(['userId', 'createdAt'])
+        )
+        && request.resource.data.keys().hasOnly(
+          camposMedicamento().concat(['userId', 'createdAt'])
+        )
+        && request.resource.data.createdAt == request.time
+        && medicamentoValido(request.resource.data);
+
+      allow update: if autenticado()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly(
+            camposMedicamento().concat(['updatedAt'])
+          )
+        && request.resource.data.updatedAt == request.time
+        && medicamentoValido(request.resource.data);
+
+      allow delete: if autenticado()
+        && resource.data.userId == request.auth.uid;
+
+      // DOSES CONFIRMADAS
+
+      match /doses/{doseId} {
+
+        function donoDoMedicamento() {
+          return autenticado()
+            && get(
+              /databases/$(database)/documents/medicamentos/$(medicamentoId)
+            ).data.userId == request.auth.uid;
+        }
+
+        allow read: if donoDoMedicamento();
+
+        allow create: if donoDoMedicamento()
+          && request.resource.data.keys().hasOnly([
+            'previstoEm', 'confirmadaEm', 'status'
+          ])
+          && request.resource.data.keys().hasAll([
+            'previstoEm', 'confirmadaEm', 'status'
+          ])
+          && request.resource.data.status == 'confirmada'
+          && request.resource.data.previstoEm is timestamp
+          && request.resource.data.confirmadaEm == request.time
+          && doseId == 'dose_' +
+            string(request.resource.data.previstoEm.toMillis());
+
+        allow update: if false;
+
+        allow delete: if donoDoMedicamento();
+      }
+    }
+
+    // CONTROLE DE TENTATIVAS DE VÍNCULO
+
+    match /tentativasCodigoVinculo/{profissionalId} {
+      allow read, write: if false;
+    }
+  }
+}

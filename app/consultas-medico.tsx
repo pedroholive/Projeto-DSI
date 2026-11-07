@@ -137,7 +137,7 @@ export default function ConsultasMedicoScreen() {
           <Text style={styles.botaoTexto}>Agendar nova consulta</Text>
         </Pressable>
         <Text style={styles.ajuda}>
-          Você escolhe o paciente vinculado na próxima tela.
+          Você escolhe o paciente vinculado na próxima tela. Toque em uma consulta para ver os detalhes, reagendar, cancelar ou excluir.
         </Text>
 
         <ScrollView
@@ -184,7 +184,17 @@ export default function ConsultasMedicoScreen() {
               STATUS_INFO.aguardando_confirmacao;
 
             return (
-              <View key={c.id} style={styles.card}>
+              <Pressable
+                key={c.id}
+                style={styles.card}
+                onPress={() =>
+                  router.push({
+                    pathname: '/detalhe-consulta-medico',
+                    params: { id: c.id },
+                  })
+                }
+                accessibilityLabel="Abrir detalhes da consulta"
+              >
                 <View style={styles.linhaTopo}>
                   <Text style={styles.paciente} numberOfLines={1}>
                     {c.pacienteNome ?? 'Paciente'}
@@ -213,7 +223,7 @@ export default function ConsultasMedicoScreen() {
                 {!!c.observacao && (
                   <Text style={styles.obs}>{c.observacao}</Text>
                 )}
-              </View>
+              </Pressable>
             );
           })
         )}
