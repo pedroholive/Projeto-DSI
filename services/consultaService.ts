@@ -1,22 +1,23 @@
+
 import {
   addDoc,
   collection,
-  getDocs,
-  query,
-  serverTimestamp,
-  where,
-  doc,
-  getDoc,
-  updateDoc,
   deleteDoc,
   deleteField,
-  runTransaction,
+  doc,
+  getDoc,
+  getDocs,
   onSnapshot,
+  query,
+  runTransaction,
+  serverTimestamp,
+  updateDoc,
+  where,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { db, auth} from '@/firebaseConfig';
-import { geocodificarEndereco } from '@/services/geocodificacaoservice';
 
+import { db, auth } from '@/firebaseConfig';
+import { geocodificarEndereco } from '@/services/geocodificacaoservice';
 
 export type StatusConsulta =
   | 'registro_pessoal'
@@ -27,21 +28,9 @@ export type StatusConsulta =
 
 export type OrigemConsulta = 'pessoal' | 'medico';
 
-// Converte o endereço em coordenadas. Se não achar, devolve {} e a consulta
-// é salva normalmente, sem mapa.
-async function coordenadasDoLocal(
-  local: string
-): Promise<{ latitude?: number; longitude?: number }> {
-  const coordenadas = await geocodificarEndereco(local);
-  return coordenadas
-    ? { latitude: coordenadas.latitude, longitude: coordenadas.longitude }
-    : {};
-}
-
 export interface Consulta {
   id?: string;
   userId: string;
-
   especialidade: string;
   medico: string;
   data: string;
@@ -50,14 +39,12 @@ export interface Consulta {
   observacao?: string;
   latitude?: number;
   longitude?: number;
-
   pacienteId?: string;
   medicoId?: string | null;
   criadoPorId?: string;
   origem?: OrigemConsulta;
   status?: StatusConsulta;
 }
-
 
 export interface DadosConsultaMedica {
   pacienteId: string;
@@ -66,6 +53,93 @@ export interface DadosConsultaMedica {
   horario: string;
   local: string;
   observacao?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+type Coordenadas = {
+  latitude: number;
+  longitude: number;
+};
+
+function coordenadasValidas(
+  latitude: number,
+  longitude: number
+): boolean {
+  return (
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180 &&
+    !(latitude === 0 && longitude === 0)
+  );
+}
+
+function obterCoordenadasInformadas(
+  latitude: number | undefined,
+  longitude: number | undefined
+): Coordenadas | null {
+  if (
+    latitude === undefined &&
+    longitude === undefined
+  ) {
+    return null;
+  }
+
+  if (
+    typeof latitude !== 'number' ||
+    typeof longitude !== 'number' ||
+    !coordenadasValidas(latitude, longitude)
+  ) {
+    throw new Error(
+      'As coordenadas da localização são inválidas.'
+    );
+  }
+
+  return {
+    latitude,
+    longitude,
+  };
+}
+
+async function coordenadasDoLocal(
+  local: string
+): Promise<Coordenadas | null> {
+  const coordenadas = await geocodificarEndereco(local);
+
+  if (
+    !coordenadas ||
+    !coordenadasValidas(
+      coordenadas.latitude,
+      coordenadas.longitude
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    latitude: coordenadas.latitude,
+    longitude: coordenadas.longitude,
+  };
+}
+
+async function resolverCoordenadas(
+  local: string,
+  latitude?: number,
+  longitude?: number
+): Promise<Coordenadas | null> {
+  const informadas = obterCoordenadasInformadas(
+    latitude,
+    longitude
+  );
+
+  if (informadas) {
+    return informadas;
+  }
+
+  return coordenadasDoLocal(local);
 }
 
 export async function criarConsultaMedica(
@@ -87,21 +161,26 @@ export async function criarConsultaMedica(
     throw new Error('Preencha os campos obrigatórios.');
   }
 
-  // Estrutura de vínculo proposta:
-  // vinculos/{medicoId}_{pacienteId}
+  const coordenadasInformadas =
+    obterCoordenadasInformadas(
+      dados.latitude,
+      dados.longitude
+    );
+
   const vinculoQuery = query(
-  collection(db, 'vinculos'),
-  where('profissionalId', '==', medicoId),
-  where('pacienteId', '==', dados.pacienteId),
-  where('status', '==', 'ativo')
-);
+    collection(db, 'vinculos'),
+    where('profissionalId', '==', medicoId),
+    where('pacienteId', '==', dados.pacienteId),
+    where('status', '==', 'ativo')
+  );
 
   const vinculoSnapshot = await getDocs(vinculoQuery);
 
   if (vinculoSnapshot.empty) {
-    throw new Error('O paciente não possui vínculo ativo com este profissional.');
+    throw new Error(
+      'O paciente não possui vínculo ativo com este profissional.'
+    );
   }
-
 
   const medicoSnapshot = await getDoc(
     doc(db, 'usuarios', medicoId)
@@ -117,60 +196,55 @@ export async function criarConsultaMedica(
   }
 
   const nomeMedico =
-    medicoSnapshot.data().nome ?? 'Médico responsável';
+    medicoSnapshot.data().nome ??
+    'Médico responsável';
 
-  const coordenadas = await coordenadasDoLocal(dados.local);
+  const coordenadas =
+    coordenadasInformadas ??
+    (await coordenadasDoLocal(dados.local.trim()));
 
   await addDoc(collection(db, 'consultas'), {
-    // Compatibilidade com a listagem atual
     userId: dados.pacienteId,
-
     pacienteId: dados.pacienteId,
     medicoId,
     criadoPorId: medicoId,
-
     origem: 'medico',
     status: 'aguardando_confirmacao',
-
     especialidade: dados.especialidade.trim(),
     medico: nomeMedico,
     data: dados.data.trim(),
     horario: dados.horario.trim(),
     local: dados.local.trim(),
     observacao: dados.observacao?.trim() ?? '',
-    ...coordenadas,
-
+    ...(coordenadas ?? {}),
     createdAt: serverTimestamp(),
   });
 }
-
-
 
 export async function criarConsulta(
   consulta: Consulta
 ): Promise<void> {
   try {
-    const coordenadas = await coordenadasDoLocal(consulta.local);
+    const coordenadas = await resolverCoordenadas(
+      consulta.local.trim(),
+      consulta.latitude,
+      consulta.longitude
+    );
 
     await addDoc(collection(db, 'consultas'), {
       userId: consulta.userId,
-
-      // Identificação da consulta pessoal
       pacienteId: consulta.userId,
       medicoId: null,
       criadoPorId: consulta.userId,
       origem: 'pessoal',
       status: 'registro_pessoal',
-
-      // Campos que já utilizamos
       especialidade: consulta.especialidade.trim(),
       medico: consulta.medico.trim(),
       data: consulta.data.trim(),
       horario: consulta.horario.trim(),
       local: consulta.local.trim(),
       observacao: consulta.observacao?.trim() ?? '',
-      ...coordenadas,
-
+      ...(coordenadas ?? {}),
       createdAt: serverTimestamp(),
     });
   } catch (error) {
@@ -190,10 +264,12 @@ export async function listarConsultas(
 
     const resultado = await getDocs(consultaQuery);
 
-    const consultas: Consulta[] = resultado.docs.map((documento) => ({
-      id: documento.id,
-      ...(documento.data() as Omit<Consulta, 'id'>),
-    }));
+    const consultas: Consulta[] = resultado.docs.map(
+      (documento) => ({
+        id: documento.id,
+        ...(documento.data() as Omit<Consulta, 'id'>),
+      })
+    );
 
     return consultas;
   } catch (error) {
@@ -201,7 +277,6 @@ export async function listarConsultas(
     throw error;
   }
 }
-
 
 export async function buscarConsultaPorId(
   consultaId: string,
@@ -216,7 +291,6 @@ export async function buscarConsultaPorId(
 
   const dados = resultado.data();
 
-  // Impede que a aplicação carregue dados de outro usuário.
   if (dados.userId !== userId) {
     return null;
   }
@@ -226,7 +300,6 @@ export async function buscarConsultaPorId(
     ...dados,
   } as Consulta;
 }
-
 
 export async function atualizarConsulta(
   consultaId: string,
@@ -239,7 +312,10 @@ export async function atualizarConsulta(
     | 'horario'
     | 'local'
     | 'observacao'
-  >
+  > & {
+    latitude?: number;
+    longitude?: number;
+  }
 ): Promise<void> {
   const usuarioAtual = auth.currentUser;
 
@@ -250,56 +326,71 @@ export async function atualizarConsulta(
   const referencia = doc(db, 'consultas', consultaId);
   const resultado = await getDoc(referencia);
 
-  // 1. Verificar se a consulta existe
   if (!resultado.exists()) {
     throw new Error('Consulta não encontrada.');
   }
 
   const consulta = resultado.data();
 
-  // 2. Verificar se pertence ao usuário autenticado
   if (consulta.userId !== userId) {
     throw new Error(
       'Você não tem permissão para editar esta consulta.'
     );
   }
 
-  // 3. Impedir edição de consultas cadastradas pelo médico
   if (consulta.origem === 'medico') {
     throw new Error(
       'Consultas cadastradas pelo médico não podem ser editadas pelo paciente.'
     );
   }
 
-  // 4. Coordenadas: só busca de novo se o local mudou ou se ainda não havia
   const localNovo = dadosAtualizados.local.trim();
-  const mudouLocal = localNovo !== String(consulta.local ?? '').trim();
-  const jaTinhaCoordenadas =
-    typeof consulta.latitude === 'number' &&
-    typeof consulta.longitude === 'number';
 
-  let coordenadas: { latitude?: number; longitude?: number } = {};
+  const mudouLocal =
+    localNovo !== String(consulta.local ?? '').trim();
 
-  if (mudouLocal || !jaTinhaCoordenadas) {
-    coordenadas = await coordenadasDoLocal(localNovo);
-  } else {
-    coordenadas = {
-      latitude: consulta.latitude as number,
-      longitude: consulta.longitude as number,
-    };
+  const coordenadasInformadas =
+    obterCoordenadasInformadas(
+      dadosAtualizados.latitude,
+      dadosAtualizados.longitude
+    );
+
+  let coordenadas: Coordenadas | null =
+    coordenadasInformadas;
+
+  if (!coordenadas) {
+    const latitudeAnterior = consulta.latitude;
+    const longitudeAnterior = consulta.longitude;
+
+    const coordenadasAnterioresValidas =
+      typeof latitudeAnterior === 'number' &&
+      typeof longitudeAnterior === 'number' &&
+      coordenadasValidas(
+        latitudeAnterior,
+        longitudeAnterior
+      );
+
+    if (!mudouLocal && coordenadasAnterioresValidas) {
+      coordenadas = {
+        latitude: latitudeAnterior,
+        longitude: longitudeAnterior,
+      };
+    } else {
+      coordenadas = await coordenadasDoLocal(localNovo);
+    }
   }
 
-  // 5. Atualizar os dados
   await updateDoc(referencia, {
-    especialidade: dadosAtualizados.especialidade.trim(),
+    especialidade:
+      dadosAtualizados.especialidade.trim(),
     medico: dadosAtualizados.medico.trim(),
     data: dadosAtualizados.data.trim(),
     horario: dadosAtualizados.horario.trim(),
-    local: dadosAtualizados.local.trim(),
-    observacao: dadosAtualizados.observacao?.trim() ?? '',
-    // Se o novo endereço não foi encontrado, as coordenadas antigas são apagadas
-    latitude: coordenadas.latitude ?? deleteField(),
-    longitude: coordenadas.longitude ?? deleteField(),
+    local: localNovo,
+    observacao:
+      dadosAtualizados.observacao?.trim() ?? '',
+    latitude: coordenadas?.latitude ?? deleteField(),
+    longitude: coordenadas?.longitude ?? deleteField(),
     updatedAt: serverTimestamp(),
   });
 }
@@ -311,7 +402,10 @@ export async function excluirConsulta(
   try {
     const usuarioAtual = auth.currentUser;
 
-    if (!usuarioAtual || usuarioAtual.uid !== userId) {
+    if (
+      !usuarioAtual ||
+      usuarioAtual.uid !== userId
+    ) {
       throw new Error('Usuário não autorizado.');
     }
 
@@ -344,8 +438,6 @@ export async function excluirConsulta(
     throw error;
   }
 }
-
-
 
 export async function responderConsulta(
   consultaId: string,
@@ -380,7 +472,9 @@ export async function responderConsulta(
       );
     }
 
-    if (consulta.status !== 'aguardando_confirmacao') {
+    if (
+      consulta.status !== 'aguardando_confirmacao'
+    ) {
       throw new Error(
         'Esta consulta já foi respondida.'
       );
@@ -393,7 +487,6 @@ export async function responderConsulta(
     });
   });
 }
-
 
 export function acompanharConsultasPaciente(
   pacienteId: string,
@@ -418,12 +511,15 @@ export function acompanharConsultasPaciente(
       callback(consultas);
     },
     (error) => {
-      console.error('Erro ao acompanhar consultas:', error);
+      console.error(
+        'Erro ao acompanhar consultas:',
+        error
+      );
+
       onError?.(error);
     }
   );
 }
-
 
 export interface ConsultaMedico extends Consulta {
   pacienteNome?: string;
@@ -440,20 +536,20 @@ export function acompanharConsultasMedico(
     return () => {};
   }
 
-  // As regras do Firestore só liberam a leitura quando a consulta é
-  // origem 'medico' E medicoId é o do usuário; os dois filtros são necessários.
   const consultaQuery = query(
     collection(db, 'consultas'),
     where('medicoId', '==', medicoId),
     where('origem', '==', 'medico')
   );
 
-  // Nome do paciente: vem do vínculo (campo nomePaciente), pois as regras
-  // não permitem ao médico ler o documento do paciente em 'usuarios'.
   let nomes: Map<string, string> | null = null;
 
-  async function carregarNomes(): Promise<Map<string, string>> {
-    if (nomes) return nomes;
+  async function carregarNomes(): Promise<
+    Map<string, string>
+  > {
+    if (nomes) {
+      return nomes;
+    }
 
     const mapa = new Map<string, string>();
 
@@ -465,16 +561,26 @@ export function acompanharConsultasMedico(
         )
       );
 
-      snap.docs.forEach((d) => {
-        const v = d.data();
-        if (typeof v.nomePaciente === 'string' && v.nomePaciente.trim()) {
-          mapa.set(v.pacienteId as string, v.nomePaciente);
+      snap.docs.forEach((documento) => {
+        const vinculo = documento.data();
+
+        if (
+          typeof vinculo.nomePaciente === 'string' &&
+          vinculo.nomePaciente.trim()
+        ) {
+          mapa.set(
+            vinculo.pacienteId as string,
+            vinculo.nomePaciente
+          );
         }
       });
 
       nomes = mapa;
     } catch (error) {
-      console.error('Erro ao carregar nomes dos pacientes:', error);
+      console.error(
+        'Erro ao carregar nomes dos pacientes:',
+        error
+      );
     }
 
     return mapa;
@@ -485,54 +591,67 @@ export function acompanharConsultasMedico(
     async (resultado) => {
       const mapa = await carregarNomes();
 
-      const consultas: ConsultaMedico[] = resultado.docs.map((d) => {
-        const dados = d.data() as Omit<Consulta, 'id'>;
+      const consultas: ConsultaMedico[] =
+        resultado.docs.map((documento) => {
+          const dados = documento.data() as Omit<
+            Consulta,
+            'id'
+          >;
 
-        return {
-          id: d.id,
-          ...dados,
-          pacienteNome: dados.pacienteId
-            ? mapa.get(dados.pacienteId)
-            : undefined,
-        };
-      });
+          return {
+            id: documento.id,
+            ...dados,
+            pacienteNome: dados.pacienteId
+              ? mapa.get(dados.pacienteId)
+              : undefined,
+          };
+        });
 
       callback(consultas);
     },
     (error) => {
-      console.error('Erro ao acompanhar consultas do médico:', error);
+      console.error(
+        'Erro ao acompanhar consultas do médico:',
+        error
+      );
+
       onError?.(error);
     }
   );
 }
 
-// ===== ACRESCENTAR AO FINAL DE services/consultaService.ts =====
-// Confira se o import do firebase/firestore já tem: doc, updateDoc, deleteDoc, serverTimestamp.
-// Se faltar algum, acrescente à lista de imports existente.
-
-// Médico cancela a consulta que ele criou
-export async function cancelarConsultaMedico(consultaId: string): Promise<void> {
-  await updateDoc(doc(db, 'consultas', consultaId), {
-    status: 'cancelada',
-    updatedAt: serverTimestamp(),
-  });
+export async function cancelarConsultaMedico(
+  consultaId: string
+): Promise<void> {
+  await updateDoc(
+    doc(db, 'consultas', consultaId),
+    {
+      status: 'cancelada',
+      updatedAt: serverTimestamp(),
+    }
+  );
 }
 
-// Médico muda data/horário; o paciente precisa confirmar de novo
 export async function reagendarConsultaMedico(
   consultaId: string,
   data: string,
   horario: string
 ): Promise<void> {
-  await updateDoc(doc(db, 'consultas', consultaId), {
-    data,
-    horario,
-    status: 'aguardando_confirmacao',
-    updatedAt: serverTimestamp(),
-  });
+  await updateDoc(
+    doc(db, 'consultas', consultaId),
+    {
+      data,
+      horario,
+      status: 'aguardando_confirmacao',
+      updatedAt: serverTimestamp(),
+    }
+  );
 }
 
-// Médico exclui a consulta que ele criou
-export async function excluirConsultaMedico(consultaId: string): Promise<void> {
-  await deleteDoc(doc(db, 'consultas', consultaId));
+export async function excluirConsultaMedico(
+  consultaId: string
+): Promise<void> {
+  await deleteDoc(
+    doc(db, 'consultas', consultaId)
+  );
 }
