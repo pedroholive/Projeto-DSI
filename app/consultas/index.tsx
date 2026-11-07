@@ -540,11 +540,14 @@ export default function ConsultasScreen() {
   }
 
   function abrirEdicao(consulta: Consulta) {
-    // Consultas marcadas pelo médico não podem ser editadas pelo paciente
+    // Consultas marcadas pelo médico não podem ser editadas: abre só a leitura (com mapa)
     if (consulta.origem === 'medico') {
-      setAvisoResposta(
-        'Esta consulta foi agendada pelo seu médico e só ele pode alterá-la.'
-      );
+      if (consulta.id) {
+        router.push({
+          pathname: '/consultas/detalhe',
+          params: { id: consulta.id },
+        });
+      }
       return;
     }
 
