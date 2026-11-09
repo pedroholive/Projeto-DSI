@@ -1,22 +1,19 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState } from "react";
 
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
   ActivityIndicator,
-} from 'react-native';
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from "@expo/vector-icons";
 
-import {
-  useFocusEffect,
-  useRouter,
-} from 'expo-router';
+import { useFocusEffect, useRouter } from "expo-router";
 
 import {
   collection,
@@ -28,10 +25,11 @@ import {
   query,
   Timestamp,
   where,
-} from 'firebase/firestore';
+} from "firebase/firestore";
 
-import { auth, db } from '../../firebaseConfig';
+import { auth, db } from "../../firebaseConfig";
 
+import Carrossel from "@/components/carrossel";
 
 type UltimaGlicemia = {
   id: string;
@@ -48,230 +46,147 @@ type UltimaPressao = {
   dataMedicao: Timestamp | null;
 };
 
-
 export default function HomeScreen() {
   const router = useRouter();
 
-  const [nomePaciente, setNomePaciente] =
-    useState('Paciente');
+  const [nomePaciente, setNomePaciente] = useState("Paciente");
 
-  const [ultimaGlicemia, setUltimaGlicemia] =
-    useState<UltimaGlicemia | null>(null);
+  const [ultimaGlicemia, setUltimaGlicemia] = useState<UltimaGlicemia | null>(
+    null,
+  );
 
-  const [ultimaPressao, setUltimaPressao] =
-    useState<UltimaPressao | null>(null);
+  const [ultimaPressao, setUltimaPressao] = useState<UltimaPressao | null>(
+    null,
+  );
 
-  const [carregando, setCarregando] =
-    useState(true);
+  const [carregando, setCarregando] = useState(true);
 
-  const [agora, setAgora] =
-    useState(new Date());
-
+  const [agora, setAgora] = useState(new Date());
 
   // =========================================================
   // CONVERTE DATA DA GLICEMIA PARA TIMESTAMP
   // =========================================================
 
-  function timestampGlicemia(
-    data: string,
-    horario: string
-  ) {
-    const [dia, mes, ano] =
-      data.split('/').map(Number);
+  function timestampGlicemia(data: string, horario: string) {
+    const [dia, mes, ano] = data.split("/").map(Number);
 
-    const [hora, minuto] =
-      horario.split(':').map(Number);
+    const [hora, minuto] = horario.split(":").map(Number);
 
-    return new Date(
-      ano,
-      mes - 1,
-      dia,
-      hora || 0,
-      minuto || 0
-    ).getTime();
+    return new Date(ano, mes - 1, dia, hora || 0, minuto || 0).getTime();
   }
-
 
   // =========================================================
   // CARREGA DADOS REAIS DO USUÁRIO
   // =========================================================
 
-  const carregarDados =
-    useCallback(async () => {
+  const carregarDados = useCallback(async () => {
+    const usuario = auth.currentUser;
 
-      const usuario = auth.currentUser;
+    if (!usuario) {
+      setCarregando(false);
+      router.replace("/login");
+      return;
+    }
 
-      if (!usuario) {
-        setCarregando(false);
-        router.replace('/login');
-        return;
+    setCarregando(true);
+
+    try {
+      // =====================================================
+      // PERFIL
+      // =====================================================
+
+      const perfilRef = doc(db, "usuarios", usuario.uid);
+
+      const perfilSnapshot = await getDoc(perfilRef);
+
+      if (perfilSnapshot.exists()) {
+        const perfil = perfilSnapshot.data();
+
+        if (perfil.nome) {
+          setNomePaciente(perfil.nome);
+        }
+      } else if (usuario.displayName) {
+        setNomePaciente(usuario.displayName);
       }
 
-      setCarregando(true);
+      // =====================================================
+      // ÚLTIMA GLICEMIA
+      // =====================================================
 
-      try {
+      const glicemiaQuery = query(
+        collection(db, "glicemias"),
+        where("userId", "==", usuario.uid),
+      );
 
-        // =====================================================
-        // PERFIL
-        // =====================================================
+      const glicemiaSnapshot = await getDocs(glicemiaQuery);
 
-        const perfilRef = doc(
-          db,
-          'usuarios',
-          usuario.uid
-        );
+      const glicemias = glicemiaSnapshot.docs.map((documento) => {
+        const dados = documento.data();
 
-        const perfilSnapshot =
-          await getDoc(perfilRef);
+        return {
+          id: documento.id,
 
-        if (perfilSnapshot.exists()) {
+          valor: Number(dados.valor),
 
-          const perfil =
-            perfilSnapshot.data();
+          data: dados.data ?? "",
 
-          if (perfil.nome) {
-            setNomePaciente(perfil.nome);
-          }
+          horario: dados.horario ?? "",
 
-        } else if (usuario.displayName) {
-          setNomePaciente(
-            usuario.displayName
-          );
-        }
+          contexto: dados.contexto ?? "",
+        };
+      });
 
+      glicemias.sort(
+        (a, b) =>
+          timestampGlicemia(b.data, b.horario) -
+          timestampGlicemia(a.data, a.horario),
+      );
 
-        // =====================================================
-        // ÚLTIMA GLICEMIA
-        // =====================================================
+      setUltimaGlicemia(glicemias[0] ?? null);
 
-        const glicemiaQuery = query(
-          collection(db, 'glicemias'),
-          where(
-            'userId',
-            '==',
-            usuario.uid
-          )
-        );
+      // =====================================================
+      // ÚLTIMA PRESSÃO
+      // =====================================================
 
-        const glicemiaSnapshot =
-          await getDocs(glicemiaQuery);
+      const pressaoRef = collection(
+        db,
+        "usuarios",
+        usuario.uid,
+        "registrosPressao",
+      );
 
-        const glicemias =
-          glicemiaSnapshot.docs.map(
-            documento => {
+      const pressaoQuery = query(
+        pressaoRef,
+        orderBy("dataMedicao", "desc"),
+        limit(1),
+      );
 
-              const dados =
-                documento.data();
+      const pressaoSnapshot = await getDocs(pressaoQuery);
 
-              return {
-                id: documento.id,
+      if (pressaoSnapshot.empty) {
+        setUltimaPressao(null);
+      } else {
+        const documento = pressaoSnapshot.docs[0];
 
-                valor:
-                  Number(dados.valor),
+        const dados = documento.data();
 
-                data:
-                  dados.data ?? '',
+        setUltimaPressao({
+          id: documento.id,
 
-                horario:
-                  dados.horario ?? '',
+          sistolica: Number(dados.sistolica),
 
-                contexto:
-                  dados.contexto ?? '',
-              };
-            }
-          );
+          diastolica: Number(dados.diastolica),
 
-        glicemias.sort(
-          (a, b) =>
-            timestampGlicemia(
-              b.data,
-              b.horario
-            ) -
-            timestampGlicemia(
-              a.data,
-              a.horario
-            )
-        );
-
-        setUltimaGlicemia(
-          glicemias[0] ?? null
-        );
-
-
-        // =====================================================
-        // ÚLTIMA PRESSÃO
-        // =====================================================
-
-        const pressaoRef =
-          collection(
-            db,
-            'usuarios',
-            usuario.uid,
-            'registrosPressao'
-          );
-
-        const pressaoQuery =
-          query(
-            pressaoRef,
-            orderBy(
-              'dataMedicao',
-              'desc'
-            ),
-            limit(1)
-          );
-
-        const pressaoSnapshot =
-          await getDocs(pressaoQuery);
-
-        if (
-          pressaoSnapshot.empty
-        ) {
-
-          setUltimaPressao(null);
-
-        } else {
-
-          const documento =
-            pressaoSnapshot.docs[0];
-
-          const dados =
-            documento.data();
-
-          setUltimaPressao({
-            id: documento.id,
-
-            sistolica:
-              Number(
-                dados.sistolica
-              ),
-
-            diastolica:
-              Number(
-                dados.diastolica
-              ),
-
-            dataMedicao:
-              dados.dataMedicao
-                instanceof Timestamp
-                ? dados.dataMedicao
-                : null,
-          });
-        }
-
-      } catch (error) {
-
-        console.error(
-          'Erro ao carregar dados da Home:',
-          error
-        );
-
-      } finally {
-
-        setCarregando(false);
+          dataMedicao:
+            dados.dataMedicao instanceof Timestamp ? dados.dataMedicao : null,
+        });
       }
-
-    }, [router]);
-
+    } catch (error) {
+      console.error("Erro ao carregar dados da Home:", error);
+    } finally {
+      setCarregando(false);
+    }
+  }, [router]);
 
   // =========================================================
   // ATUALIZA AO VOLTAR PARA A HOME
@@ -279,639 +194,286 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-
       setAgora(new Date());
 
       carregarDados();
 
-      const intervalo =
-        setInterval(() => {
-          setAgora(new Date());
-        }, 60000);
+      const intervalo = setInterval(() => {
+        setAgora(new Date());
+      }, 60000);
 
-      return () =>
-        clearInterval(intervalo);
-
-    }, [carregarDados])
+      return () => clearInterval(intervalo);
+    }, [carregarDados]),
   );
-
 
   // =========================================================
   // FORMATA DATA DA HOME
   // =========================================================
 
-  const dataAtual =
-    agora.toLocaleDateString(
-      'pt-BR',
-      {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-      }
-    );
+  const dataAtual = agora.toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
 
-  const horaAtual =
-    agora.toLocaleTimeString(
-      'pt-BR',
-      {
-        hour: '2-digit',
-        minute: '2-digit',
-      }
-    );
+  const horaAtual = agora.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
-  const dataFormatada =
-    dataAtual.charAt(0).toUpperCase() +
-    dataAtual.slice(1);
-
+  const dataFormatada = dataAtual.charAt(0).toUpperCase() + dataAtual.slice(1);
 
   // =========================================================
   // FORMATA MOMENTO DA PRESSÃO
   // =========================================================
 
-  function formatarMomentoPressao(
-    timestamp: Timestamp | null
-  ) {
-
+  function formatarMomentoPressao(timestamp: Timestamp | null) {
     if (!timestamp) {
-      return 'Data indisponível';
+      return "Data indisponível";
     }
 
-    const data =
-      timestamp.toDate();
+    const data = timestamp.toDate();
 
-    const hoje =
-      new Date();
+    const hoje = new Date();
 
     const mesmoDia =
-      data.getDate() ===
-        hoje.getDate() &&
-      data.getMonth() ===
-        hoje.getMonth() &&
-      data.getFullYear() ===
-        hoje.getFullYear();
+      data.getDate() === hoje.getDate() &&
+      data.getMonth() === hoje.getMonth() &&
+      data.getFullYear() === hoje.getFullYear();
 
-    const horario =
-      data.toLocaleTimeString(
-        'pt-BR',
-        {
-          hour: '2-digit',
-          minute: '2-digit',
-        }
-      );
+    const horario = data.toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
     if (mesmoDia) {
       return `Hoje • ${horario}`;
     }
 
-    const dataFormatada =
-      data.toLocaleDateString(
-        'pt-BR'
-      );
+    const dataFormatada = data.toLocaleDateString("pt-BR");
 
     return `${dataFormatada} • ${horario}`;
   }
 
-
   return (
-
-    <SafeAreaView
-      style={styles.container}
-    >
-
+    <SafeAreaView style={styles.container}>
       <ScrollView
-        contentContainerStyle={
-          styles.scrollContent
-        }
-        showsVerticalScrollIndicator={
-          false
-        }
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-
-        <View
-          style={styles.content}
-        >
-
-
+        <View style={styles.content}>
           {/* =====================================================
               CABEÇALHO
           ===================================================== */}
 
           <View style={styles.header}>
-
             <View style={styles.headerTexto}>
+              <Text style={styles.saudacao}>Olá, {nomePaciente}!</Text>
 
-              <Text
-                style={styles.saudacao}
-              >
-                Olá, {nomePaciente}!
-              </Text>
-
-              <Text
-                style={styles.data}
-              >
+              <Text style={styles.data}>
                 {dataFormatada} • {horaAtual}
               </Text>
-
             </View>
-
 
             <Pressable
               style={styles.perfilBtn}
-              onPress={() =>
-                router.push('/mais')
-              }
+              onPress={() => router.push("/mais")}
             >
-
-              <Ionicons
-                name="person-outline"
-                size={21}
-                color="#0E766D"
-              />
-
+              <Ionicons name="person-outline" size={21} color="#0E766D" />
             </Pressable>
-
           </View>
-
 
           {/* =====================================================
               CARREGAMENTO
           ===================================================== */}
 
           {carregando ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#0E9F8C" />
 
-            <View
-              style={
-                styles.loadingContainer
-              }
-            >
-
-              <ActivityIndicator
-                size="small"
-                color="#0E9F8C"
-              />
-
-              <Text
-                style={
-                  styles.loadingTexto
-                }
-              >
-                Carregando seus dados...
-              </Text>
-
+              <Text style={styles.loadingTexto}>Carregando seus dados...</Text>
             </View>
-
           ) : (
-
             <>
-
-
               {/* =================================================
                   GLICOSE E PRESSÃO
               ================================================= */}
 
-              <View
-                style={styles.metricasRow}
-              >
-
-
+              <View style={styles.metricasRow}>
                 {/* GLICOSE */}
 
                 <Pressable
                   style={styles.metricaCard}
-                  onPress={() =>
-                    router.push('/glicose')
-                  }
+                  onPress={() => router.push("/glicose")}
                 >
-
-                  <View
-                    style={
-                      styles.metricaHeader
-                    }
-                  >
-
-                    <Text
-                      style={
-                        styles.metricaTitulo
-                      }
-                    >
-                      Glicose
-                    </Text>
-
+                  <View style={styles.metricaHeader}>
+                    <Text style={styles.metricaTitulo}>Glicose</Text>
 
                     {ultimaGlicemia && (
-
-                      <View
-                        style={
-                          styles.tagVerde
-                        }
-                      >
-
-                        <Text
-                          style={
-                            styles.tagVerdeTexto
-                          }
-                        >
-                          {ultimaGlicemia.contexto ||
-                            'Medição'}
+                      <View style={styles.tagVerde}>
+                        <Text style={styles.tagVerdeTexto}>
+                          {ultimaGlicemia.contexto || "Medição"}
                         </Text>
-
                       </View>
-
                     )}
-
                   </View>
 
-
                   {ultimaGlicemia ? (
-
                     <>
-
-                      <View
-                        style={
-                          styles.valorRow
-                        }
-                      >
-
-                        <Text
-                          style={
-                            styles.glicoseValor
-                          }
-                        >
-                          {
-                            ultimaGlicemia.valor
-                          }
+                      <View style={styles.valorRow}>
+                        <Text style={styles.glicoseValor}>
+                          {ultimaGlicemia.valor}
                         </Text>
 
-                        <Text
-                          style={
-                            styles.unidade
-                          }
-                        >
-                          mg/dL
-                        </Text>
-
+                        <Text style={styles.unidade}>mg/dL</Text>
                       </View>
 
-
-                      <View
-                        style={
-                          styles.statusRow
-                        }
-                      >
-
+                      <View style={styles.statusRow}>
                         <Ionicons
                           name="time-outline"
                           size={15}
                           color="#0E9F8C"
                         />
 
-                        <Text
-                          style={
-                            styles.statusVerde
-                          }
-                        >
+                        <Text style={styles.statusVerde}>
                           {ultimaGlicemia.data}
-                          {' • '}
+                          {" • "}
                           {ultimaGlicemia.horario}
                         </Text>
-
                       </View>
-
                     </>
-
                   ) : (
+                    <View style={styles.estadoVazio}>
+                      <Text style={styles.valorVazio}>—</Text>
 
-                    <View
-                      style={
-                        styles.estadoVazio
-                      }
-                    >
-
-                      <Text
-                        style={
-                          styles.valorVazio
-                        }
-                      >
-                        —
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.estadoVazioTexto
-                        }
-                      >
+                      <Text style={styles.estadoVazioTexto}>
                         Nenhuma medição
                       </Text>
-
                     </View>
-
                   )}
-
                 </Pressable>
-
 
                 {/* PRESSÃO */}
 
                 <Pressable
                   style={styles.metricaCard}
-                  onPress={() =>
-                    router.push('/pressao')
-                  }
+                  onPress={() => router.push("/pressao")}
                 >
-
-                  <View
-                    style={
-                      styles.metricaHeader
-                    }
-                  >
-
-                    <Text
-                      style={
-                        styles.metricaTitulo
-                      }
-                    >
-                      Pressão
-                    </Text>
-
+                  <View style={styles.metricaHeader}>
+                    <Text style={styles.metricaTitulo}>Pressão</Text>
 
                     {ultimaPressao && (
-
-                      <View
-                        style={
-                          styles.tagNeutra
-                        }
-                      >
-
-                        <Text
-                          style={
-                            styles.tagNeutraTexto
-                          }
-                        >
-                          Última
-                        </Text>
-
+                      <View style={styles.tagNeutra}>
+                        <Text style={styles.tagNeutraTexto}>Última</Text>
                       </View>
-
                     )}
-
                   </View>
 
-
                   {ultimaPressao ? (
-
                     <>
-
-                      <View
-                        style={
-                          styles.valorRow
-                        }
-                      >
-
-                        <Text
-                          style={
-                            styles.pressaoValor
-                          }
-                        >
-                          {
-                            ultimaPressao.sistolica
-                          }
-                          /
-                          {
-                            ultimaPressao.diastolica
-                          }
+                      <View style={styles.valorRow}>
+                        <Text style={styles.pressaoValor}>
+                          {ultimaPressao.sistolica}/{ultimaPressao.diastolica}
                         </Text>
 
-                        <Text
-                          style={
-                            styles.unidade
-                          }
-                        >
-                          mmHg
-                        </Text>
-
+                        <Text style={styles.unidade}>mmHg</Text>
                       </View>
 
-
-                      <View
-                        style={
-                          styles.statusRow
-                        }
-                      >
-
+                      <View style={styles.statusRow}>
                         <Ionicons
                           name="time-outline"
                           size={15}
                           color="#7E8D89"
                         />
 
-                        <Text
-                          style={
-                            styles.statusSecundario
-                          }
-                        >
-                          {
-                            formatarMomentoPressao(
-                              ultimaPressao.dataMedicao
-                            )
-                          }
+                        <Text style={styles.statusSecundario}>
+                          {formatarMomentoPressao(ultimaPressao.dataMedicao)}
                         </Text>
-
                       </View>
-
                     </>
-
                   ) : (
+                    <View style={styles.estadoVazio}>
+                      <Text style={styles.valorVazio}>—</Text>
 
-                    <View
-                      style={
-                        styles.estadoVazio
-                      }
-                    >
-
-                      <Text
-                        style={
-                          styles.valorVazio
-                        }
-                      >
-                        —
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.estadoVazioTexto
-                        }
-                      >
+                      <Text style={styles.estadoVazioTexto}>
                         Nenhuma aferição
                       </Text>
-
                     </View>
-
                   )}
-
                 </Pressable>
-
               </View>
-
 
               {/* =================================================
                   NOVO REGISTRO
               ================================================= */}
 
               <Pressable
-                style={
-                  styles.novoRegistroCard
-                }
-                onPress={() =>
-                  router.push(
-                    '/novo-registro'
-                  )
-                }
+                style={styles.novoRegistroCard}
+                onPress={() => router.push("/novo-registro")}
               >
-
-                <View
-                  style={
-                    styles.novoRegistroIcone
-                  }
-                >
-
-                  <Ionicons
-                    name="add"
-                    size={24}
-                    color="#0E9F8C"
-                  />
-
+                <View style={styles.novoRegistroIcone}>
+                  <Ionicons name="add" size={24} color="#0E9F8C" />
                 </View>
 
+                <View style={styles.novoRegistroConteudo}>
+                  <Text style={styles.novoRegistroTitulo}>Novo registro</Text>
 
-                <View
-                  style={
-                    styles.novoRegistroConteudo
-                  }
-                >
-
-                  <Text
-                    style={
-                      styles.novoRegistroTitulo
-                    }
-                  >
-                    Novo registro
+                  <Text style={styles.novoRegistroDescricao}>
+                    Registre uma nova medição de glicose ou pressão arterial.
                   </Text>
-
-                  <Text
-                    style={
-                      styles.novoRegistroDescricao
-                    }
-                  >
-                    Registre uma nova
-                    medição de glicose ou
-                    pressão arterial.
-                  </Text>
-
                 </View>
 
+                <View style={styles.novoRegistroBotao}>
+                  <Text style={styles.novoRegistroBotaoTexto}>Adicionar</Text>
 
-                <View
-                  style={
-                    styles.novoRegistroBotao
-                  }
-                >
-
-                  <Text
-                    style={
-                      styles.novoRegistroBotaoTexto
-                    }
-                  >
-                    Adicionar
-                  </Text>
-
-                  <Ionicons
-                    name="chevron-forward"
-                    size={17}
-                    color="#FFFFFF"
-                  />
-
+                  <Ionicons name="chevron-forward" size={17} color="#FFFFFF" />
                 </View>
-
               </Pressable>
 
+              {/* =================================================
+                  CARROSSEL
+              ================================================= */}
+              <Carrossel />
 
               {/* =================================================
                   DICA DE SAÚDE
               ================================================= */}
 
-              <View
-                style={styles.dicaCard}
-              >
-
-                <View
-                  style={styles.dicaIcone}
-                >
-
-                  <Ionicons
-                    name="heart-outline"
-                    size={24}
-                    color="#EF476F"
-                  />
-
+              <View style={styles.dicaCard}>
+                <View style={styles.dicaIcone}>
+                  <Ionicons name="heart-outline" size={24} color="#EF476F" />
                 </View>
 
+                <View style={styles.dicaConteudo}>
+                  <Text style={styles.dicaTitulo}>Dica de Saúde</Text>
 
-                <View
-                  style={
-                    styles.dicaConteudo
-                  }
-                >
-
-                  <Text
-                    style={
-                      styles.dicaTitulo
-                    }
-                  >
-                    Dica de Saúde
+                  <Text style={styles.dicaTexto}>
+                    Registrar suas medições regularmente ajuda a acompanhar seu
+                    histórico de saúde.
                   </Text>
-
-                  <Text
-                    style={
-                      styles.dicaTexto
-                    }
-                  >
-                    Registrar suas medições
-                    regularmente ajuda a
-                    acompanhar seu histórico
-                    de saúde.
-                  </Text>
-
                 </View>
-
               </View>
-
             </>
-
           )}
-
         </View>
-
       </ScrollView>
-
     </SafeAreaView>
   );
 }
 
-
 const styles = StyleSheet.create({
-
   container: {
     flex: 1,
-    backgroundColor: '#F4F8F7',
+    backgroundColor: "#F4F8F7",
   },
 
   scrollContent: {
     flexGrow: 1,
-    alignItems: 'center',
+    alignItems: "center",
   },
 
   content: {
-    width: '100%',
+    width: "100%",
     maxWidth: 520,
 
     paddingHorizontal: 20,
@@ -919,15 +481,14 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
 
-
   // =========================================================
   // CABEÇALHO
   // =========================================================
 
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
 
     marginBottom: 22,
   },
@@ -939,15 +500,15 @@ const styles = StyleSheet.create({
 
   saudacao: {
     fontSize: 25,
-    fontWeight: '700',
-    color: '#273331',
+    fontWeight: "700",
+    color: "#273331",
   },
 
   data: {
     marginTop: 4,
 
     fontSize: 14,
-    color: '#7E8D89',
+    color: "#7E8D89",
   },
 
   perfilBtn: {
@@ -956,15 +517,14 @@ const styles = StyleSheet.create({
 
     borderRadius: 21,
 
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
 
     borderWidth: 1,
-    borderColor: '#E0EAE8',
+    borderColor: "#E0EAE8",
 
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
-
 
   // =========================================================
   // CARREGAMENTO
@@ -973,24 +533,23 @@ const styles = StyleSheet.create({
   loadingContainer: {
     minHeight: 200,
 
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
 
     gap: 10,
   },
 
   loadingTexto: {
     fontSize: 13,
-    color: '#7E8D89',
+    color: "#7E8D89",
   },
-
 
   // =========================================================
   // CARDS DE GLICOSE E PRESSÃO
   // =========================================================
 
   metricasRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
 
     gap: 12,
 
@@ -1002,16 +561,16 @@ const styles = StyleSheet.create({
 
     minHeight: 138,
 
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
 
     borderRadius: 22,
 
     padding: 17,
 
     borderWidth: 1,
-    borderColor: '#E8EFED',
+    borderColor: "#E8EFED",
 
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOpacity: 0.04,
     shadowRadius: 8,
 
@@ -1024,27 +583,26 @@ const styles = StyleSheet.create({
   },
 
   metricaHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
 
     marginBottom: 12,
   },
 
   metricaTitulo: {
     fontSize: 14,
-    color: '#6F7C79',
+    color: "#6F7C79",
   },
-
 
   // =========================================================
   // TAGS
   // =========================================================
 
   tagVerde: {
-    maxWidth: '60%',
+    maxWidth: "60%",
 
-    backgroundColor: '#E7FAF5',
+    backgroundColor: "#E7FAF5",
 
     borderRadius: 12,
 
@@ -1053,14 +611,14 @@ const styles = StyleSheet.create({
   },
 
   tagVerdeTexto: {
-    color: '#0E9F8C',
+    color: "#0E9F8C",
 
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 
   tagNeutra: {
-    backgroundColor: '#EEF3F2',
+    backgroundColor: "#EEF3F2",
 
     borderRadius: 12,
 
@@ -1069,46 +627,45 @@ const styles = StyleSheet.create({
   },
 
   tagNeutraTexto: {
-    color: '#6F7C79',
+    color: "#6F7C79",
 
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: "600",
   },
-
 
   // =========================================================
   // VALORES
   // =========================================================
 
   valorRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
+    flexDirection: "row",
+    alignItems: "baseline",
 
     gap: 4,
   },
 
   glicoseValor: {
     fontSize: 29,
-    fontWeight: '700',
+    fontWeight: "700",
 
-    color: '#0E9F8C',
+    color: "#0E9F8C",
   },
 
   pressaoValor: {
     fontSize: 25,
-    fontWeight: '700',
+    fontWeight: "700",
 
-    color: '#273331',
+    color: "#273331",
   },
 
   unidade: {
     fontSize: 11,
-    color: '#7E8D89',
+    color: "#7E8D89",
   },
 
   statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
 
     gap: 5,
 
@@ -1119,16 +676,15 @@ const styles = StyleSheet.create({
     flex: 1,
 
     fontSize: 10,
-    color: '#0E9F8C',
+    color: "#0E9F8C",
   },
 
   statusSecundario: {
     flex: 1,
 
     fontSize: 10,
-    color: '#7E8D89',
+    color: "#7E8D89",
   },
-
 
   // =========================================================
   // ESTADO VAZIO
@@ -1136,43 +692,42 @@ const styles = StyleSheet.create({
 
   estadoVazio: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
 
   valorVazio: {
     fontSize: 29,
-    fontWeight: '700',
-    color: '#B6C0BD',
+    fontWeight: "700",
+    color: "#B6C0BD",
   },
 
   estadoVazioTexto: {
     marginTop: 5,
 
     fontSize: 11,
-    color: '#7E8D89',
+    color: "#7E8D89",
   },
-
 
   // =========================================================
   // NOVO REGISTRO
   // =========================================================
 
   novoRegistroCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
 
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
 
     borderRadius: 22,
 
     padding: 16,
 
     borderWidth: 1,
-    borderColor: '#E8EFED',
+    borderColor: "#E8EFED",
 
     marginBottom: 14,
 
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOpacity: 0.04,
     shadowRadius: 8,
 
@@ -1190,10 +745,10 @@ const styles = StyleSheet.create({
 
     borderRadius: 15,
 
-    backgroundColor: '#E7F8F4',
+    backgroundColor: "#E7F8F4",
 
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
 
     marginRight: 13,
   },
@@ -1205,9 +760,9 @@ const styles = StyleSheet.create({
 
   novoRegistroTitulo: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: "700",
 
-    color: '#273331',
+    color: "#273331",
   },
 
   novoRegistroDescricao: {
@@ -1215,18 +770,18 @@ const styles = StyleSheet.create({
 
     fontSize: 12,
 
-    color: '#7E8D89',
+    color: "#7E8D89",
 
     lineHeight: 17,
   },
 
   novoRegistroBotao: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
 
     gap: 3,
 
-    backgroundColor: '#0E9F8C',
+    backgroundColor: "#0E9F8C",
 
     paddingHorizontal: 13,
     paddingVertical: 9,
@@ -1236,30 +791,29 @@ const styles = StyleSheet.create({
 
   novoRegistroBotaoTexto: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
 
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
-
 
   // =========================================================
   // DICA DE SAÚDE
   // =========================================================
 
   dicaCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
 
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
 
     borderRadius: 22,
 
     padding: 18,
 
     borderWidth: 1,
-    borderColor: '#E8EFED',
+    borderColor: "#E8EFED",
 
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOpacity: 0.04,
     shadowRadius: 8,
 
@@ -1277,10 +831,10 @@ const styles = StyleSheet.create({
 
     borderRadius: 14,
 
-    backgroundColor: '#FFE8ED',
+    backgroundColor: "#FFE8ED",
 
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
 
     marginRight: 14,
   },
@@ -1293,17 +847,16 @@ const styles = StyleSheet.create({
     marginBottom: 5,
 
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
 
-    color: '#EF476F',
+    color: "#EF476F",
   },
 
   dicaTexto: {
     fontSize: 14,
 
-    color: '#273331',
+    color: "#273331",
 
     lineHeight: 20,
   },
-
 });
