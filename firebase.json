@@ -30,5 +30,11 @@
       "enabled": true,
       "port": 4000
     }
+  },
+  "firestore": {
+    "database": "(default)",
+    "location": "nam5",
+    "rules": "y",
+    "indexes": "y"
   }
 }

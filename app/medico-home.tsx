@@ -212,6 +212,23 @@ export default function DoctorHomeScreen() {
 
         let failed = '';
 
+        // Recarrega o perfil para refletir edições feitas
+        // na tela de perfil (nome, especialidade e CRM).
+        try {
+          const perfilSnap = await getDoc(
+            doc(db, 'usuarios', uid)
+          );
+
+          if (active && perfilSnap.exists()) {
+            setProfile(perfilSnap.data() as DoctorProfile);
+          }
+        } catch (error) {
+          console.error(
+            'Erro ao atualizar perfil da home:',
+            error
+          );
+        }
+
         try {
           const loaded =
             await listarPacientesVinculados();
