@@ -67,10 +67,12 @@ service cloud.firestore {
           .affectedKeys().hasOnly([
             'nome',
             'telefone',
-            'telefoneEmergencia'
+            'telefoneEmergencia',
+            'especialidade',
+            'crm'
           ]);
 
-      allow delete: if false;
+      allow delete: if dono(userId);
 
       // REGISTROS DE PRESSÃO ARTERIAL
 
