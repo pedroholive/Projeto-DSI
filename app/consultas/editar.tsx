@@ -15,6 +15,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { auth } from '@/firebaseConfig';
+import BotaoAbrirRota from '@/components/botaoabrirrota';
+import CampoEndereco from '@/components/Campoendereco';
+import MapaConsulta from '@/components/mapaconsulta';
 import ModalConsultaFeedback, {
   type ResumoConsulta,
   type TipoFeedbackConsulta,
@@ -56,6 +59,11 @@ export default function EditarConsultaScreen() {
   const [data, setData] = useState('');
   const [horario, setHorario] = useState('');
   const [local, setLocal] = useState('');
+  const [localSalvo, setLocalSalvo] = useState('');
+  const [coordenadas, setCoordenadas] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [observacao, setObservacao] = useState('');
 
   const [carregando, setCarregando] = useState(true);
@@ -105,6 +113,16 @@ export default function EditarConsultaScreen() {
         setData(consulta.data);
         setHorario(consulta.horario);
         setLocal(consulta.local);
+        setLocalSalvo(consulta.local);
+        if (
+          typeof consulta.latitude === 'number' &&
+          typeof consulta.longitude === 'number'
+        ) {
+          setCoordenadas({
+            latitude: consulta.latitude,
+            longitude: consulta.longitude,
+          });
+        }
         setObservacao(consulta.observacao ?? '');
       } catch (error) {
         if (!ativo) return;
@@ -171,6 +189,7 @@ export default function EditarConsultaScreen() {
         horario: horario.trim(),
         local: local.trim(),
         observacao: observacao.trim(),
+        ...(coordenadas ?? {}),
       };
 
       await atualizarConsulta(id, usuario.uid, dadosAtualizados);
@@ -285,13 +304,49 @@ export default function EditarConsultaScreen() {
               />
 
               <Text style={styles.label}>Local *</Text>
-              <TextInput
-                style={styles.input}
+              <CampoEndereco
                 value={local}
                 onChangeText={setLocal}
+                onSelecionar={(sugestao) => {
+                  if (sugestao) {
+                    setCoordenadas({
+                      latitude: sugestao.latitude,
+                      longitude: sugestao.longitude,
+                    });
+                    setLocalSalvo(sugestao.textoCompleto.slice(0, 100));
+                  } else {
+                    setCoordenadas(null);
+                  }
+                }}
                 placeholder="Clínica ou hospital"
-                placeholderTextColor="#A0AAA7"
+                inputStyle={styles.input}
               />
+
+              {coordenadas && local.trim() === localSalvo.trim() && (
+                <View style={{ marginTop: 12 }}>
+                  <MapaConsulta
+                    latitude={coordenadas.latitude}
+                    longitude={coordenadas.longitude}
+                    titulo={local}
+                  />
+                </View>
+              )}
+
+              {local.trim().length > 3 && (
+                <BotaoAbrirRota
+                  latitude={
+                    local.trim() === localSalvo.trim()
+                      ? coordenadas?.latitude
+                      : undefined
+                  }
+                  longitude={
+                    local.trim() === localSalvo.trim()
+                      ? coordenadas?.longitude
+                      : undefined
+                  }
+                  endereco={local}
+                />
+              )}
 
               <Text style={styles.label}>Observações</Text>
               <TextInput
