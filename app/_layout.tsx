@@ -10,6 +10,11 @@ export default function RootLayout() {
       <Stack.Screen name="recuperar-senha" options={{ headerShown: false }} />
       <Stack.Screen name="novo-registro" options={{ headerShown: false }}/>
       <Stack.Screen name="editar-pressao" options={{headerShown: false,}}/>
+      <Stack.Screen name="consultas/index" options={{headerShown: false,}}/>
+      <Stack.Screen name="consultas/nova" options={{headerShown: false,}}/>
+      <Stack.Screen name="consultas/editar" options={{headerShown: false,}}/>
+      <Stack.Screen name="consultas/detalhe" options={{headerShown: false,}}/>
+      <Stack.Screen name="meus-medicos" options={{headerShown: false,}}/>
     </Stack>
   );
 }

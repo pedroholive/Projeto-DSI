@@ -9,7 +9,7 @@ interface Props {
 
 // Versão do navegador: mapa do OpenStreetMap embutido (react-native-maps não roda na web)
 export default function MapaConsulta({ latitude, longitude }: Props) {
-  const d = 0.005;
+  const d = 0.003;
   const caixa = `${longitude - d},${latitude - d},${longitude + d},${latitude + d}`;
   const src =
     'https://www.openstreetmap.org/export/embed.html' +
@@ -28,7 +28,7 @@ export default function MapaConsulta({ latitude, longitude }: Props) {
 
 const styles = StyleSheet.create({
   caixa: {
-    height: 190,
+    height: 300,
     borderRadius: 14,
     overflow: 'hidden',
     backgroundColor: '#E0EAE8',

@@ -19,6 +19,7 @@ import { auth } from '@/firebaseConfig';
 import ModalConsultaFeedback, {
   type ResumoConsulta,
 } from '@/components/Modalconsultafeedback';
+import CampoEndereco from '@/components/Campoendereco';
 import { criarConsulta } from '@/services/consultaService';
 
 const C = {
@@ -105,6 +106,10 @@ export default function NovaConsultaScreen() {
   const [data, setData] = useState('');
   const [horario, setHorario] = useState('');
   const [local, setLocal] = useState('');
+  const [coordenadas, setCoordenadas] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [observacao, setObservacao] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [registrada, setRegistrada] = useState<ResumoConsulta | null>(null);
@@ -115,6 +120,7 @@ export default function NovaConsultaScreen() {
     setData('');
     setHorario('');
     setLocal('');
+    setCoordenadas(null);
     setObservacao('');
   }
 
@@ -184,6 +190,8 @@ export default function NovaConsultaScreen() {
         horario: horario.trim(),
         local: local.trim(),
         observacao: observacao.trim(),
+        // Se o usuário escolheu uma sugestão, as coordenadas já vêm prontas
+        ...(coordenadas ?? {}),
       });
 
       setRegistrada({
@@ -350,22 +358,22 @@ export default function NovaConsultaScreen() {
               )}
 
               <Text style={styles.label}>Local *</Text>
-              <View style={styles.inputContainer}>
-                <Ionicons
-                  name="location-outline"
-                  size={19}
-                  color={C.muted}
-                  style={styles.inputIcone}
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ex.: Clínica Saúde"
-                  placeholderTextColor="#A7B2AF"
-                  value={local}
-                  onChangeText={setLocal}
-                  maxLength={100}
-                />
-              </View>
+              <CampoEndereco
+                value={local}
+                onChangeText={setLocal}
+                onSelecionar={(sugestao) =>
+                  setCoordenadas(
+                    sugestao
+                      ? { latitude: sugestao.latitude, longitude: sugestao.longitude }
+                      : null
+                  )
+                }
+                placeholder="Ex.: Hospital Jayme da Fonte, Recife"
+                maxLength={100}
+                icone
+                containerStyle={styles.inputContainer}
+                inputStyle={styles.input}
+              />
 
               <Text style={styles.label}>
                 Observação <Text style={styles.opcional}>(opcional)</Text>
