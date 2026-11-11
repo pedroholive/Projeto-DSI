@@ -1,23 +1,17 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const C = {
-  bg: '#F4F8F7',
-  card: '#FFFFFF',
-  primary: '#0E9F8C',
-  primaryDark: '#0E766D',
-  primarySoft: '#E7F8F4',
-  text: '#273331',
-  muted: '#7E8D89',
-  border: '#E0EAE8',
+  bg: "#F4F8F7",
+  card: "#FFFFFF",
+  primary: "#0E9F8C",
+  primaryDark: "#0E766D",
+  primarySoft: "#E7F8F4",
+  text: "#273331",
+  muted: "#7E8D89",
+  border: "#E0EAE8",
 };
 
 type OpcaoProps = {
@@ -27,12 +21,7 @@ type OpcaoProps = {
   onPress: () => void;
 };
 
-function Opcao({
-  icone,
-  titulo,
-  descricao,
-  onPress,
-}: OpcaoProps) {
+function Opcao({ icone, titulo, descricao, onPress }: OpcaoProps) {
   return (
     <Pressable
       style={({ pressed }) => [
@@ -42,28 +31,16 @@ function Opcao({
       onPress={onPress}
     >
       <View style={styles.iconeContainer}>
-        <Ionicons
-          name={icone}
-          size={22}
-          color={C.primaryDark}
-        />
+        <Ionicons name={icone} size={22} color={C.primaryDark} />
       </View>
 
       <View style={styles.textos}>
-        <Text style={styles.opcaoTitulo}>
-          {titulo}
-        </Text>
+        <Text style={styles.opcaoTitulo}>{titulo}</Text>
 
-        <Text style={styles.opcaoDescricao}>
-          {descricao}
-        </Text>
+        <Text style={styles.opcaoDescricao}>{descricao}</Text>
       </View>
 
-      <Ionicons
-        name="chevron-forward"
-        size={21}
-        color={C.muted}
-      />
+      <Ionicons name="chevron-forward" size={21} color={C.muted} />
     </Pressable>
   );
 }
@@ -72,10 +49,7 @@ export default function MaisScreen() {
   const router = useRouter();
 
   return (
-    <SafeAreaView
-      style={styles.container}
-      edges={['top', 'left', 'right']}
-    >
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -83,44 +57,43 @@ export default function MaisScreen() {
         <View style={styles.content}>
           <View style={styles.header}>
             <View>
-              <Text style={styles.titulo}>
-                Mais
-              </Text>
+              <Text style={styles.titulo}>Mais</Text>
 
-              <Text style={styles.descricao}>
-                Outras opções do HealthSync.
-              </Text>
+              <Text style={styles.descricao}>Outras opções do HealthSync.</Text>
             </View>
 
             <View style={styles.headerIcone}>
-              <Ionicons
-                name="menu-outline"
-                size={23}
-                color={C.primaryDark}
-              />
+              <Ionicons name="menu-outline" size={23} color={C.primaryDark} />
             </View>
           </View>
 
           <View style={styles.opcoes}>
             <Opcao
+              icone="person-outline"
+              titulo="Meu perfil"
+              descricao="Veja e atualize seus dados e sua conta"
+              onPress={() => router.push("/perfil-paciente")}
+            />
+
+            <Opcao
               icone="calendar-outline"
               titulo="Consultas"
               descricao="Acompanhe e organize suas consultas"
-              onPress={() => router.push('/consultas')}
+              onPress={() => router.push("/consultas")}
             />
 
             <Opcao
               icone="medkit-outline"
               titulo="Medicamentos"
               descricao="Acompanhe seus medicamentos"
-              onPress={() => router.push('/remedios')}
+              onPress={() => router.push("/remedios")}
             />
 
             <Opcao
               icone="people-outline"
               titulo="Meus médicos"
               descricao="Gerencie seus vínculos com profissionais de saúde"
-              onPress={() => router.push('/meus-medicos')}
+              onPress={() => router.push("/meus-medicos")}
             />
           </View>
         </View>
@@ -137,11 +110,11 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     flexGrow: 1,
-    alignItems: 'center',
+    alignItems: "center",
   },
 
   content: {
-    width: '100%',
+    width: "100%",
     maxWidth: 520,
     paddingHorizontal: 20,
     paddingTop: 16,
@@ -149,15 +122,15 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 20,
   },
 
   titulo: {
     fontSize: 25,
-    fontWeight: '700',
+    fontWeight: "700",
     color: C.text,
   },
 
@@ -172,8 +145,8 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 21,
     backgroundColor: C.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   opcoes: {
@@ -185,8 +158,8 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     borderRadius: 18,
     padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
     borderColor: C.border,
   },
@@ -200,8 +173,8 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: 14,
     backgroundColor: C.primarySoft,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 13,
   },
 
@@ -212,7 +185,7 @@ const styles = StyleSheet.create({
 
   opcaoTitulo: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: "700",
     color: C.text,
   },
 
@@ -223,4 +196,3 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
 });
-

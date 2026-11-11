@@ -277,7 +277,7 @@ export default function HomeScreen() {
 
             <Pressable
               style={styles.perfilBtn}
-              onPress={() => router.push("/mais")}
+              onPress={() => router.push("/perfil-paciente")}
             >
               <Ionicons name="person-outline" size={21} color="#0E766D" />
             </Pressable>

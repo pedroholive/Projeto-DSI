@@ -62,7 +62,7 @@ export default function RemediosScreen() {
         />
       </SafeAreaView>
     );
-  // Trocar de usuário desmonta todos os estados da conta anterior.
+
   return <FluxoMedicamentos key={usuario} userId={usuario} />;
 }
 
