@@ -16,8 +16,8 @@ export default function MapaConsulta({ latitude, longitude, titulo }: Props) {
         initialRegion={{
           latitude,
           longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
+          latitudeDelta: 0.005,
+          longitudeDelta: 0.005,
         }}
         scrollEnabled
         zoomEnabled
@@ -30,7 +30,7 @@ export default function MapaConsulta({ latitude, longitude, titulo }: Props) {
 
 const styles = StyleSheet.create({
   caixa: {
-    height: 190,
+    height: 300,
     borderRadius: 14,
     overflow: 'hidden',
     backgroundColor: '#E0EAE8',
