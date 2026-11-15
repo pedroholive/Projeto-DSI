@@ -1,9 +1,12 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // =====================================================
     // FUNÇÕES AUXILIARES
+    // =====================================================
 
     function autenticado() {
       return request.auth != null;
@@ -32,7 +35,6 @@ service cloud.firestore {
 
     function vinculoAtivo(medicoId, pacienteId) {
       let id = medicoId + '_' + pacienteId;
-
       let caminho =
         /databases/$(database)/documents/vinculos/$(id);
 
@@ -42,7 +44,9 @@ service cloud.firestore {
         && get(caminho).data.pacienteId == pacienteId;
     }
 
+    // =====================================================
     // PERFIS DOS USUÁRIOS
+    // =====================================================
 
     match /usuarios/{userId} {
 
@@ -52,7 +56,8 @@ service cloud.firestore {
 
       allow create: if dono(userId)
         && request.resource.data.perfil in [
-          'patient', 'professional'
+          'patient',
+          'professional'
         ]
         && request.resource.data.verificado == false
         && request.resource.data.keys().hasAll([
@@ -63,21 +68,130 @@ service cloud.firestore {
         ]);
 
       allow update: if dono(userId)
-        && request.resource.data.diff(resource.data)
-          .affectedKeys().hasOnly([
-            'nome',
-            'telefone',
-            'telefoneEmergencia',
-            'especialidade',
-            'crm'
-          ]);
+        && (
+          (
+            resource.data.perfil == 'patient'
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                'nome',
+                'telefone',
+                'telefoneEmergencia',
+                'dataNascimento',
+                'apresentaMorbidade',
+                'condicoes',
+                'tiposCondicoes'
+              ])
+            && (
+              !request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny([
+                  'dataNascimento'
+                ])
+              ||
+              (
+                request.resource.data.dataNascimento is string
+                && request.resource.data.dataNascimento.matches(
+                  '^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/[0-9]{4}$'
+                )
+              )
+            )
+            && (
+              !request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny([
+                  'apresentaMorbidade',
+                  'condicoes',
+                  'tiposCondicoes'
+                ])
+              ||
+              (
+                request.resource.data.apresentaMorbidade is bool
+                && request.resource.data.condicoes is list
+                && request.resource.data.condicoes.size() <= 2
+                && request.resource.data.condicoes.hasOnly([
+                  'Diabetes',
+                  'Hipertensão'
+                ])
+                && request.resource.data.tiposCondicoes is map
+                && request.resource.data.tiposCondicoes.keys().hasOnly([
+                  'Diabetes',
+                  'Hipertensão'
+                ])
+                && (
+                  (
+                    request.resource.data.apresentaMorbidade == false
+                    && request.resource.data.condicoes.size() == 0
+                    && request.resource.data.tiposCondicoes.keys().size() == 0
+                  )
+                  ||
+                  (
+                    request.resource.data.apresentaMorbidade == true
+                    && request.resource.data.condicoes.size() > 0
+                    && request.resource.data.tiposCondicoes.keys()
+                      .hasAll(request.resource.data.condicoes)
+                    && request.resource.data.condicoes
+                      .hasAll(
+                        request.resource.data.tiposCondicoes.keys()
+                      )
+                    && (
+                      !request.resource.data.condicoes.hasAny([
+                        'Diabetes'
+                      ])
+                      ||
+                      request.resource.data.tiposCondicoes
+                        .get('Diabetes', '') in [
+                          'Diabetes Tipo 1',
+                          'Diabetes Tipo 2',
+                          'Diabetes Gestacional',
+                          'Pré-diabetes',
+                          'Não sei informar'
+                        ]
+                    )
+                    && (
+                      !request.resource.data.condicoes.hasAny([
+                        'Hipertensão'
+                      ])
+                      ||
+                      request.resource.data.tiposCondicoes
+                        .get('Hipertensão', '') in [
+                          'Hipertensão Essencial / Primária',
+                          'Hipertensão Gestacional',
+                          'Pré-hipertensão / Em observação',
+                          'Não sei informar'
+                        ]
+                    )
+                  )
+                )
+              )
+            )
+          )
+          ||
+          (
+            resource.data.perfil == 'professional'
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                'nome',
+                'telefone',
+                'especialidade',
+                'crm'
+              ])
+            && (
+              !request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny([
+                  'especialidade'
+                ])
+              ||
+              resource.data.get('verificado', false) == false
+            )
+          )
+        );
 
-      allow delete: if dono(userId);
+      // Exclusão de perfis somente pelo backend.
+      allow delete: if false;
 
-      // REGISTROS DE PRESSÃO ARTERIAL
+      // ===================================================
+      // PRESSÃO ARTERIAL
+      // ===================================================
 
       match /registrosPressao/{registroId} {
-
         allow read: if dono(userId);
 
         allow create: if dono(userId);
@@ -88,7 +202,9 @@ service cloud.firestore {
       }
     }
 
+    // =====================================================
     // CÓDIGOS TEMPORÁRIOS DE VÍNCULO
+    // =====================================================
 
     match /codigosVinculo/{codigoId} {
 
@@ -105,14 +221,13 @@ service cloud.firestore {
           && dados.expiraEm > request.time;
       }
 
-      allow get: if tokenValido() && (
-        medicoVerificado(request.auth.uid)
-        ||
-        (
-          autenticado()
-          && resource.data.pacienteId == request.auth.uid
-        )
-      );
+      allow get: if tokenValido()
+        && autenticado()
+        && (
+          medicoVerificado(request.auth.uid)
+          ||
+          resource.data.pacienteId == request.auth.uid
+        );
 
       allow list: if false;
 
@@ -177,17 +292,53 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // =====================================================
     // CONTROLE DE CÓDIGOS DE VÍNCULO
+    // =====================================================
 
     match /controleCodigosVinculo/{pacienteId} {
       allow read, write: if false;
     }
 
+    // =====================================================
     // VÍNCULOS ENTRE MÉDICOS E PACIENTES
+    // =====================================================
 
     match /vinculos/{vinculoId} {
 
-      allow get, list: if autenticado()
+      // Permite consultar vínculos existentes pertencentes
+      // ao paciente ou ao profissional.
+      //
+      // Também permite que o próprio médico verificado
+      // consulte um ID com seu prefixo, mesmo quando
+      // o documento ainda não existe.
+
+      allow get: if autenticado()
+        && (
+          (
+            resource != null
+            && (
+              resource.data.pacienteId == request.auth.uid
+              ||
+              resource.data.profissionalId == request.auth.uid
+            )
+          )
+          ||
+          (
+            !exists(
+              /databases/$(database)/documents/vinculos/$(vinculoId)
+            )
+            && medicoVerificado(request.auth.uid)
+            && vinculoId.matches(
+              '^' + request.auth.uid + '_.+$'
+            )
+          )
+        );
+
+      // Consultas de listas continuam limitadas
+      // ao participante autenticado.
+
+      allow list: if autenticado()
         && (
           resource.data.pacienteId == request.auth.uid
           ||
@@ -242,9 +393,6 @@ service cloud.firestore {
           /databases/$(database)/documents/codigosVinculo/$(request.resource.data.conviteCodigo)
         ).data.vinculoId == vinculoId;
 
-      // O nome precisa coincidir com o perfil
-      // do próprio paciente autenticado.
-
       function nomePacienteCorreto() {
         return request.resource.data.get(
           'nomePaciente', ''
@@ -257,11 +405,11 @@ service cloud.firestore {
       allow update: if autenticado()
         && resource.data.pacienteId == request.auth.uid
         && (
-          // Aceitar ou recusar.
           (
             resource.data.status == 'pendente'
             && request.resource.data.status in [
-              'ativo', 'recusado'
+              'ativo',
+              'recusado'
             ]
             && request.resource.data.diff(resource.data)
               .affectedKeys().hasOnly([
@@ -276,7 +424,6 @@ service cloud.firestore {
             )
           )
           ||
-          // Revogar vínculo ativo.
           (
             resource.data.status == 'ativo'
             && request.resource.data.status == 'revogado'
@@ -288,7 +435,6 @@ service cloud.firestore {
             && request.resource.data.atualizadoEm == request.time
           )
           ||
-          // Sincronizar nome em vínculos antigos.
           (
             resource.data.status == 'ativo'
             && request.resource.data.status == 'ativo'
@@ -303,13 +449,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // =====================================================
     // CONSULTAS
+    // =====================================================
 
     match /consultas/{consultaId} {
 
       function pessoal(dados) {
-        return dados.get('origem', 'pessoal')
-          == 'pessoal';
+        return dados.get('origem', 'pessoal') == 'pessoal';
       }
 
       function camposConsulta() {
@@ -340,21 +487,16 @@ service cloud.firestore {
         && (
           (
             request.resource.data.userId == request.auth.uid
-
             && pessoal(request.resource.data)
-
             && request.resource.data.get(
               'pacienteId', request.auth.uid
             ) == request.auth.uid
-
             && request.resource.data.get(
               'criadoPorId', request.auth.uid
             ) == request.auth.uid
-
             && request.resource.data.get(
               'medicoId', null
             ) == null
-
             && request.resource.data.get(
               'status', 'registro_pessoal'
             ) == 'registro_pessoal'
@@ -362,21 +504,13 @@ service cloud.firestore {
           ||
           (
             request.resource.data.origem == 'medico'
-
             && request.resource.data.status ==
               'aguardando_confirmacao'
-
-            && request.resource.data.medicoId ==
-              request.auth.uid
-
-            && request.resource.data.criadoPorId ==
-              request.auth.uid
-
+            && request.resource.data.medicoId == request.auth.uid
+            && request.resource.data.criadoPorId == request.auth.uid
             && request.resource.data.userId ==
               request.resource.data.pacienteId
-
             && medicoVerificado(request.auth.uid)
-
             && vinculoAtivo(
               request.auth.uid,
               request.resource.data.pacienteId
@@ -430,14 +564,11 @@ service cloud.firestore {
         && (
           (
             resource.data.userId == request.auth.uid
-
             && pessoal(resource.data)
-
             && request.resource.data.diff(resource.data)
               .affectedKeys().hasOnly(
                 camposConsulta().concat(['updatedAt'])
               )
-
             && request.resource.data.get(
               'updatedAt', null
             ) == request.time
@@ -445,37 +576,29 @@ service cloud.firestore {
           ||
           (
             resource.data.get('origem', '') == 'medico'
-
             && resource.data.pacienteId == request.auth.uid
-
             && resource.data.status ==
               'aguardando_confirmacao'
-
             && request.resource.data.status in [
-              'confirmada', 'recusada'
+              'confirmada',
+              'recusada'
             ]
-
             && request.resource.data.diff(resource.data)
               .affectedKeys().hasOnly([
                 'status',
                 'respondidoEm',
                 'updatedAt'
               ])
-
             && request.resource.data.respondidoEm ==
               request.time
-
-            && request.resource.data.updatedAt ==
-              request.time
+            && request.resource.data.updatedAt == request.time
           )
           ||
           (
             resource.data.get('origem', '') == 'medico'
-
-            && resource.data.get('medicoId', '') == request.auth.uid
-
+            && resource.data.get('medicoId', '') ==
+              request.auth.uid
             && medicoVerificado(request.auth.uid)
-
             && request.resource.data.diff(resource.data)
               .affectedKeys().hasOnly([
                 'status',
@@ -483,12 +606,10 @@ service cloud.firestore {
                 'horario',
                 'updatedAt'
               ])
-
             && request.resource.data.status in [
               'cancelada',
               'aguardando_confirmacao'
             ]
-
             && request.resource.data.updatedAt == request.time
           )
         );
@@ -502,18 +623,20 @@ service cloud.firestore {
           ||
           (
             resource.data.get('origem', '') == 'medico'
-            && resource.data.get('medicoId', '') == request.auth.uid
+            && resource.data.get('medicoId', '') ==
+              request.auth.uid
           )
         );
     }
 
+    // =====================================================
     // GLICEMIA
+    // =====================================================
 
     match /glicemias/{glicemiaId} {
 
       allow create: if autenticado()
-        && request.resource.data.userId ==
-          request.auth.uid;
+        && request.resource.data.userId == request.auth.uid;
 
       allow read: if autenticado()
         && (
@@ -521,8 +644,7 @@ service cloud.firestore {
           ||
           (
             medicoVerificado(request.auth.uid)
-            &&
-            vinculoAtivo(
+            && vinculoAtivo(
               request.auth.uid,
               resource.data.userId
             )
@@ -537,16 +659,26 @@ service cloud.firestore {
         && resource.data.userId == request.auth.uid;
     }
 
+    // =====================================================
     // MEDICAMENTOS
+    // =====================================================
 
     match /medicamentos/{medicamentoId} {
 
       function camposMedicamento() {
         return [
-          'nome', 'dosagem', 'unidade', 'forma',
-          'frequencia', 'horarios', 'duracao',
-          'dataInicial', 'dataFinal', 'instrucoes',
-          'lembrete', 'lembreteMinutos'
+          'nome',
+          'dosagem',
+          'unidade',
+          'forma',
+          'frequencia',
+          'horarios',
+          'duracao',
+          'dataInicial',
+          'dataFinal',
+          'instrucoes',
+          'lembrete',
+          'lembreteMinutos'
         ];
       }
 
@@ -597,7 +729,9 @@ service cloud.firestore {
       allow delete: if autenticado()
         && resource.data.userId == request.auth.uid;
 
+      // ===================================================
       // DOSES CONFIRMADAS
+      // ===================================================
 
       match /doses/{doseId} {
 
@@ -612,10 +746,14 @@ service cloud.firestore {
 
         allow create: if donoDoMedicamento()
           && request.resource.data.keys().hasOnly([
-            'previstoEm', 'confirmadaEm', 'status'
+            'previstoEm',
+            'confirmadaEm',
+            'status'
           ])
           && request.resource.data.keys().hasAll([
-            'previstoEm', 'confirmadaEm', 'status'
+            'previstoEm',
+            'confirmadaEm',
+            'status'
           ])
           && request.resource.data.status == 'confirmada'
           && request.resource.data.previstoEm is timestamp
@@ -629,7 +767,9 @@ service cloud.firestore {
       }
     }
 
+    // =====================================================
     // CONTROLE DE TENTATIVAS DE VÍNCULO
+    // =====================================================
 
     match /tentativasCodigoVinculo/{profissionalId} {
       allow read, write: if false;

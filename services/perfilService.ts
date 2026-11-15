@@ -1,10 +1,10 @@
-import { deleteUser, updateProfile } from 'firebase/auth';
-import { deleteDoc, doc, updateDoc } from 'firebase/firestore';
+
+import { updateProfile } from 'firebase/auth';
+import { doc, updateDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 import { auth, db } from '@/firebaseConfig';
 
-// Especialidades disponíveis para o profissional de saúde.
-// Mesma lista utilizada na tela de cadastro.
 export const ESPECIALIDADES = [
   'Médico',
   'Fisioterapeuta',
@@ -20,7 +20,6 @@ export interface DadosPerfilMedico {
   crm: string;
 }
 
-// Mesma máscara de telefone utilizada no cadastro: (99) 99999-9999.
 export function mascaraTelefone(valor: string): string {
   const numeros = valor.replace(/\D/g, '').slice(0, 11);
 
@@ -35,7 +34,6 @@ export function mascaraTelefone(valor: string): string {
   return `(${numeros.slice(0, 2)}) ${numeros.slice(2, 7)}-${numeros.slice(7)}`;
 }
 
-// Mesma validação de telefone utilizada no cadastro.
 function telefoneValido(valor: string): boolean {
   const numeros = valor.replace(/\D/g, '');
 
@@ -47,14 +45,12 @@ function telefoneValido(valor: string): boolean {
   );
 }
 
-// Mesma validação de nome utilizada no cadastro.
 function nomeValido(valor: string): boolean {
   return /^[A-Za-zÀ-ÖØ-öø-ÿ]+(\s[A-Za-zÀ-ÖØ-öø-ÿ]+)*$/.test(
     valor.trim()
   );
 }
 
-// Aceita os formatos comuns de CRM (números, UF, barras e hífens).
 function crmValido(valor: string): boolean {
   const crm = valor.trim();
 
@@ -69,8 +65,10 @@ export async function atualizarPerfilMedico(
   uid: string,
   dados: DadosPerfilMedico
 ): Promise<void> {
-  if (!uid.trim()) {
-    throw new Error('Médico não identificado.');
+  const usuario = auth.currentUser;
+
+  if (!uid.trim() || !usuario || usuario.uid !== uid) {
+    throw new Error('Profissional não autenticado.');
   }
 
   const nome = dados.nome.trim();
@@ -107,15 +105,9 @@ export async function atualizarPerfilMedico(
     crm,
   });
 
-  // Mantém o nome de exibição do Authentication sincronizado.
-  // Uma falha aqui não deve impedir a atualização do perfil.
-  const usuario = auth.currentUser;
-
-  if (usuario && usuario.uid === uid) {
-    await updateProfile(usuario, { displayName: nome }).catch(
-      () => undefined
-    );
-  }
+  await updateProfile(usuario, {
+    displayName: nome,
+  }).catch(() => undefined);
 }
 
 export async function excluirContaMedico(): Promise<void> {
@@ -125,8 +117,18 @@ export async function excluirContaMedico(): Promise<void> {
     throw new Error('Nenhum usuário autenticado.');
   }
 
-  // Remove primeiro os dados do Firestore e só depois a conta
-  // do Authentication (a exclusão da conta encerra a sessão).
-  await deleteDoc(doc(db, 'usuarios', usuario.uid));
-  await deleteUser(usuario);
+  const functions = getFunctions(auth.app);
+
+  const excluir = httpsCallable<
+    { confirmar: boolean },
+    { sucesso: boolean }
+  >(
+    functions,
+    'excluirContaProfissional',
+    { timeout: 540000 }
+  );
+
+  await excluir({
+    confirmar: true,
+  });
 }
