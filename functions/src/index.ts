@@ -1,5 +1,5 @@
-import { getAuth } from "firebase-admin/auth";
 
+import { getAuth } from "firebase-admin/auth";
 import { initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
@@ -35,7 +35,6 @@ async function verificarLimiteTentativas(
         : 0;
 
     const dentroDaJanela = agora - inicioJanela < JANELA_TENTATIVAS_MS;
-
     const tentativas = dentroDaJanela ? (dados?.tentativas ?? 0) : 0;
 
     if (tentativas >= MAX_TENTATIVAS) {
@@ -61,7 +60,10 @@ export const gerarCodigoVinculo = onCall(async (request) => {
   const pacienteId = request.auth?.uid;
 
   if (!pacienteId) {
-    throw new HttpsError("unauthenticated", "É necessário estar autenticado.");
+    throw new HttpsError(
+      "unauthenticated",
+      "É necessário estar autenticado.",
+    );
   }
 
   const usuarioDoc = await db.collection("usuarios").doc(pacienteId).get();
@@ -76,18 +78,14 @@ export const gerarCodigoVinculo = onCall(async (request) => {
   const controleRef = db.collection("controleCodigosVinculo").doc(pacienteId);
 
   const codigo = randomBytes(6).toString("hex").toUpperCase();
-
   const hash = gerarHash(codigo);
-
   const codigoRef = db.collection("codigosVinculo").doc(hash);
 
   const agora = Timestamp.now();
-
   const expiraEm = Timestamp.fromMillis(agora.toMillis() + 10 * 60 * 1000);
 
   await db.runTransaction(async (transaction) => {
     const controleDoc = await transaction.get(controleRef);
-
     const controle = controleDoc.data();
 
     // Impede gerar outro código antes de 1 minuto.
@@ -152,14 +150,20 @@ export const solicitarVinculoPorCodigo = onCall(async (request) => {
   const codigoRecebido = request.data?.codigo;
 
   if (!profissionalId) {
-    throw new HttpsError("unauthenticated", "É necessário estar autenticado.");
+    throw new HttpsError(
+      "unauthenticated",
+      "É necessário estar autenticado.",
+    );
   }
 
   if (
     typeof codigoRecebido !== "string" ||
     !/^[A-Fa-f0-9]{12}$/.test(codigoRecebido)
   ) {
-    throw new HttpsError("invalid-argument", "Código de vínculo inválido.");
+    throw new HttpsError(
+      "invalid-argument",
+      "Código de vínculo inválido.",
+    );
   }
 
   const profissionalDoc = await db
@@ -175,21 +179,26 @@ export const solicitarVinculoPorCodigo = onCall(async (request) => {
     profissional?.especialidade !== "Médico" ||
     profissional?.verificado !== true
   ) {
-    throw new HttpsError("permission-denied", "Profissional não autorizado.");
+    throw new HttpsError(
+      "permission-denied",
+      "Profissional não autorizado.",
+    );
   }
 
   await verificarLimiteTentativas(profissionalId);
 
   const codigo = codigoRecebido.toUpperCase();
   const hash = gerarHash(codigo);
-
   const codigoRef = db.collection("codigosVinculo").doc(hash);
 
   const resultado = await db.runTransaction(async (transaction) => {
     const codigoDoc = await transaction.get(codigoRef);
 
     if (!codigoDoc.exists) {
-      throw new HttpsError("not-found", "Código inválido ou expirado.");
+      throw new HttpsError(
+        "not-found",
+        "Código inválido ou expirado.",
+      );
     }
 
     const dadosCodigo = codigoDoc.data()!;
@@ -206,9 +215,7 @@ export const solicitarVinculoPorCodigo = onCall(async (request) => {
     }
 
     const pacienteId = dadosCodigo.pacienteId;
-
     const controleRef = db.collection("controleCodigosVinculo").doc(pacienteId);
-
     const controleDoc = await transaction.get(controleRef);
 
     if (!controleDoc.exists || controleDoc.data()?.hashAtivo !== hash) {
@@ -219,13 +226,14 @@ export const solicitarVinculoPorCodigo = onCall(async (request) => {
     }
 
     if (typeof pacienteId !== "string" || pacienteId === profissionalId) {
-      throw new HttpsError("failed-precondition", "Solicitação inválida.");
+      throw new HttpsError(
+        "failed-precondition",
+        "Solicitação inválida.",
+      );
     }
 
     const vinculoId = `${profissionalId}_${pacienteId}`;
-
     const vinculoRef = db.collection("vinculos").doc(vinculoId);
-
     const vinculoDoc = await transaction.get(vinculoRef);
 
     if (vinculoDoc.exists) {
@@ -265,7 +273,10 @@ export const listarPacientesVinculados = onCall(async (request) => {
   const profissionalId = request.auth?.uid;
 
   if (!profissionalId) {
-    throw new HttpsError("unauthenticated", "É necessário estar autenticado.");
+    throw new HttpsError(
+      "unauthenticated",
+      "É necessário estar autenticado.",
+    );
   }
 
   // Verifica se o usuário é um médico autorizado.
@@ -330,18 +341,36 @@ export const listarPacientesVinculados = onCall(async (request) => {
   };
 });
 
-// Exclusão executada apenas para o próprio paciente, após reautenticação.
-// As remoções são repetíveis: uma falha pode ser retomada pela mesma conta.
+// ======================================================
+// 4. EXCLUIR CONTA DO PACIENTE
+// ======================================================
+
+// Exclusão executada apenas para o próprio paciente, após
+// reautenticação. As remoções são repetíveis: uma falha pode
+// ser retomada pela mesma conta.
+
 export const excluirContaPaciente = onCall(
   { timeoutSeconds: 540 },
   async (request) => {
     const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Entre na sua conta.");
-    if (request.data?.confirmar !== true) {
-      throw new HttpsError("invalid-argument", "Confirme a exclusão.");
+
+    if (!uid) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Entre na sua conta.",
+      );
     }
+
+    if (request.data?.confirmar !== true) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Confirme a exclusão.",
+      );
+    }
+
     const autenticadoEm = Number(request.auth?.token.auth_time);
     const agora = Date.now() / 1000;
+
     if (
       !Number.isFinite(autenticadoEm) ||
       agora - autenticadoEm > 300 ||
@@ -352,8 +381,10 @@ export const excluirContaPaciente = onCall(
         "Confirme sua senha novamente.",
       );
     }
+
     const perfilRef = db.collection("usuarios").doc(uid);
     const perfil = await perfilRef.get();
+
     if (perfil.data()?.perfil !== "patient") {
       throw new HttpsError(
         "permission-denied",
@@ -362,7 +393,8 @@ export const excluirContaPaciente = onCall(
     }
 
     // Revoga o acesso médico antes de remover os registros.
-    // As consultas abaixo usam somente um filtro e não exigem índice composto.
+    // As consultas abaixo usam somente um filtro
+    // e não exigem índice composto.
     const filtros = [
       ["vinculos", "pacienteId"],
       ["codigosVinculo", "pacienteId"],
@@ -370,6 +402,7 @@ export const excluirContaPaciente = onCall(
       ["medicamentos", "userId"],
       ["consultas", "userId"],
     ];
+
     for (const [colecao, campo] of filtros) {
       while (true) {
         const pagina = await db
@@ -377,20 +410,156 @@ export const excluirContaPaciente = onCall(
           .where(campo, "==", uid)
           .limit(50)
           .get();
+
         if (pagina.empty) break;
+
         for (const documento of pagina.docs) {
           // Inclui subcoleções, especialmente o histórico de doses.
           await db.recursiveDelete(documento.ref);
         }
       }
     }
-    await db.recursiveDelete(db.collection("controleCodigosVinculo").doc(uid));
-    // Mantém o documento do paciente até concluir a limpeza para permitir retries.
+
+    await db.recursiveDelete(
+      db.collection("controleCodigosVinculo").doc(uid),
+    );
+
+    // Mantém o documento do paciente até concluir a
+    // limpeza para permitir novas tentativas.
     for (const subcolecao of await perfilRef.listCollections()) {
       await db.recursiveDelete(subcolecao);
     }
+
     await getAuth().deleteUser(uid);
     await perfilRef.delete();
+
     return { sucesso: true };
+  },
+);
+
+// ======================================================
+// 5. EXCLUIR CONTA PROFISSIONAL
+// ======================================================
+
+// Exclusão exclusiva do próprio profissional,
+// com autenticação recente.
+//
+// Utiliza Admin SDK: não depende de allow delete
+// das regras de segurança do Firestore.
+
+export const excluirContaProfissional = onCall(
+  { timeoutSeconds: 540 },
+  async (request) => {
+    const uid = request.auth?.uid;
+
+    if (!uid) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Entre na sua conta.",
+      );
+    }
+
+    if (request.data?.confirmar !== true) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Confirme a exclusão.",
+      );
+    }
+
+    const autenticadoEm = Number(request.auth?.token.auth_time);
+    const agora = Date.now() / 1000;
+
+    if (
+      !Number.isFinite(autenticadoEm) ||
+      agora - autenticadoEm > 300 ||
+      autenticadoEm > agora + 60
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Faça login novamente antes de excluir sua conta.",
+      );
+    }
+
+    const perfilRef = db.collection("usuarios").doc(uid);
+    const perfilDoc = await perfilRef.get();
+
+    if (
+      !perfilDoc.exists ||
+      perfilDoc.data()?.perfil !== "professional"
+    ) {
+      throw new HttpsError(
+        "permission-denied",
+        "Operação exclusiva do profissional.",
+      );
+    }
+
+    // Primeiro revoga os vínculos com pacientes.
+    while (true) {
+      const pagina = await db
+        .collection("vinculos")
+        .where("profissionalId", "==", uid)
+        .limit(50)
+        .get();
+
+      if (pagina.empty) break;
+
+      for (const documento of pagina.docs) {
+        await db.recursiveDelete(documento.ref);
+      }
+    }
+
+    // Remove apenas as consultas criadas pelo fluxo
+    // do profissional. Consultas pessoais dos pacientes
+    // são preservadas.
+    //
+    // O cursor avança mesmo quando um documento
+    // é preservado.
+    let ultimaConsultaId: string | null = null;
+
+    while (true) {
+      let consulta = db
+        .collection("consultas")
+        .where("medicoId", "==", uid)
+        .orderBy("__name__")
+        .limit(50);
+
+      if (ultimaConsultaId !== null) {
+        consulta = consulta.startAfter(ultimaConsultaId);
+      }
+
+      const pagina = await consulta.get();
+
+      if (pagina.empty) break;
+
+      ultimaConsultaId = pagina.docs[pagina.docs.length - 1].id;
+
+      for (const documento of pagina.docs) {
+        if (documento.data().origem === "medico") {
+          await db.recursiveDelete(documento.ref);
+        }
+      }
+    }
+
+    // Remove o controle de tentativas de vínculo.
+    await db.recursiveDelete(
+      db.collection("tentativasCodigoVinculo").doc(uid),
+    );
+
+    // Remove subcoleções do perfil profissional.
+    for (const subcolecao of await perfilRef.listCollections()) {
+      await db.recursiveDelete(subcolecao);
+    }
+
+    // ATENÇÃO:
+    // Estas duas operações não são atômicas.
+    // É necessário testar falhas parciais
+    // no ambiente de emulação antes de
+    // disponibilizar exclusão para contas reais.
+    await getAuth().deleteUser(uid);
+    await perfilRef.delete();
+
+    return {
+      sucesso: true,
+    };
   },
 );

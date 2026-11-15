@@ -1,3 +1,4 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
@@ -18,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MensagemModal } from '@/components/medicamentos/mensagem-modal';
 import { auth, db } from '@/firebaseConfig';
+
 import {
   atualizarPerfilMedico,
   ESPECIALIDADES,
@@ -59,16 +61,23 @@ const perfilVazio: DadosPerfil = {
 export default function PerfilMedicoScreen() {
   const router = useRouter();
 
-  const [perfil, setPerfil] = useState<DadosPerfil | null>(null);
-  const [carregando, setCarregando] = useState(true);
+  const [perfil, setPerfil] = useState<DadosPerfil | null>(
+    null
+  );
 
+  const [carregando, setCarregando] = useState(true);
   const [editando, setEditando] = useState(false);
-  const [form, setForm] = useState<DadosPerfil>(perfilVazio);
+
+  const [form, setForm] = useState<DadosPerfil>(
+    perfilVazio
+  );
 
   const [salvando, setSalvando] = useState(false);
   const [saindo, setSaindo] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
-  const [confirmarExclusao, setConfirmarExclusao] = useState(false);
+
+  const [confirmarExclusao, setConfirmarExclusao] =
+    useState(false);
 
   const [feedback, setFeedback] = useState<{
     tipo: 'sucesso' | 'erro';
@@ -86,22 +95,30 @@ export default function PerfilMedicoScreen() {
       }
 
       try {
-        const snap = await getDoc(doc(db, 'usuarios', usuario.uid));
+        const snap = await getDoc(
+          doc(db, 'usuarios', usuario.uid)
+        );
+
         const d = snap.exists() ? snap.data() : {};
 
         const dados: DadosPerfil = {
           nome: d.nome ?? 'Médico',
           email: usuario.email ?? d.email ?? '',
           telefone: d.telefone ?? '',
-          especialidade: d.especialidade ?? 'Médico',
+          especialidade:
+            d.especialidade ?? 'Médico',
           crm: d.crm ?? '',
           verificado: d.verificado === true,
         };
 
         setPerfil(dados);
         setForm(dados);
-      } catch (e) {
-        console.error('Erro ao carregar perfil:', e);
+      } catch (erro) {
+        console.error(
+          'Erro ao carregar perfil:',
+          erro
+        );
+
         setFeedback({
           tipo: 'erro',
           titulo: 'Perfil indisponível',
@@ -118,15 +135,17 @@ export default function PerfilMedicoScreen() {
 
   function iniciarEdicao() {
     if (perfil) {
-      setForm(perfil);
+      setForm({ ...perfil });
     }
+
     setEditando(true);
   }
 
   function cancelarEdicao() {
     if (perfil) {
-      setForm(perfil);
+      setForm({ ...perfil });
     }
+
     setEditando(false);
   }
 
@@ -151,25 +170,33 @@ export default function PerfilMedicoScreen() {
         ...form,
         nome: form.nome.trim(),
         telefone: mascaraTelefone(form.telefone),
-        especialidade: form.especialidade.trim(),
+        especialidade:
+          form.especialidade.trim(),
         crm: form.crm.trim().toUpperCase(),
       };
 
       setPerfil(atualizado);
       setForm(atualizado);
       setEditando(false);
+
       setFeedback({
         tipo: 'sucesso',
         titulo: 'Perfil atualizado',
-        descricao: 'Suas informações foram salvas com sucesso.',
+        descricao:
+          'Suas informações foram salvas com sucesso.',
       });
-    } catch (e) {
+    } catch (erro) {
+      console.error(
+        'Erro ao atualizar perfil:',
+        erro
+      );
+
       setFeedback({
         tipo: 'erro',
         titulo: 'Não foi possível salvar',
         descricao:
-          e instanceof Error
-            ? e.message
+          erro instanceof Error
+            ? erro.message
             : 'Ocorreu um erro inesperado. Tente novamente.',
       });
     } finally {
@@ -179,35 +206,75 @@ export default function PerfilMedicoScreen() {
 
   async function sair() {
     if (saindo) return;
+
     setSaindo(true);
+
     try {
       await signOut(auth);
       router.replace('/login');
-    } catch (e) {
-      console.error('Erro ao sair:', e);
+    } catch (erro) {
+      console.error('Erro ao sair:', erro);
+
+      setFeedback({
+        tipo: 'erro',
+        titulo: 'Não foi possível sair',
+        descricao:
+          'Tente novamente em alguns instantes.',
+      });
+    } finally {
       setSaindo(false);
     }
   }
 
   async function excluirConta() {
     if (excluindo) return;
+
     setExcluindo(true);
 
     try {
       await excluirContaMedico();
+
       setConfirmarExclusao(false);
       router.replace('/login');
-    } catch (e) {
-      console.error('Erro ao excluir conta:', e);
+    } catch (erro) {
+      console.error(
+        'Erro ao excluir conta:',
+        erro
+      );
+
       setConfirmarExclusao(false);
+
+      const codigo = (
+        erro as { code?: string }
+      )?.code;
+
+      let descricao =
+        'Não foi possível excluir sua conta. Tente novamente.';
+
+      if (
+        codigo ===
+          'functions/failed-precondition' ||
+        codigo ===
+          'auth/requires-recent-login'
+      ) {
+        descricao =
+          'Por segurança, saia da conta, faça login novamente e repita a exclusão.';
+      } else if (
+        codigo === 'functions/unavailable'
+      ) {
+        descricao =
+          'O serviço de exclusão está indisponível. Tente novamente mais tarde.';
+      } else if (
+        codigo === 'functions/not-found'
+      ) {
+        descricao =
+          'O serviço de exclusão ainda não foi publicado no Firebase.';
+      }
+
       setFeedback({
         tipo: 'erro',
         titulo: 'Não foi possível excluir',
-        descricao:
-          (e as { code?: string })?.code ===
-          'auth/requires-recent-login'
-            ? 'Por segurança, saia da conta, faça login novamente e repita a exclusão.'
-            : 'Ocorreu um erro ao excluir sua conta. Tente novamente.',
+        descricao,
       });
     } finally {
       setExcluindo(false);
@@ -220,12 +287,23 @@ export default function PerfilMedicoScreen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <Pressable style={styles.voltar} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color={C.primary} />
-          <Text style={styles.voltarTexto}>Voltar</Text>
+        <Pressable
+          style={styles.voltar}
+          onPress={() => router.back()}
+        >
+          <Ionicons
+            name="arrow-back"
+            size={24}
+            color={C.primary}
+          />
+          <Text style={styles.voltarTexto}>
+            Voltar
+          </Text>
         </Pressable>
 
-        <Text style={styles.titulo}>Perfil</Text>
+        <Text style={styles.titulo}>
+          Perfil
+        </Text>
 
         {carregando ? (
           <ActivityIndicator
@@ -237,20 +315,36 @@ export default function PerfilMedicoScreen() {
           <>
             <View style={styles.card}>
               <View style={styles.avatar}>
-                <Ionicons name="person" size={36} color={C.primary} />
+                <Ionicons
+                  name="person"
+                  size={36}
+                  color={C.primary}
+                />
               </View>
-              <Text style={styles.nome}>{perfil?.nome ?? 'Médico'}</Text>
-              <Text style={styles.email}>{perfil?.email}</Text>
+
+              <Text style={styles.nome}>
+                {perfil?.nome ?? 'Médico'}
+              </Text>
+
+              <Text style={styles.email}>
+                {perfil?.email}
+              </Text>
 
               {editando ? (
                 <View style={styles.formulario}>
                   <View style={styles.campo}>
-                    <Text style={styles.rotuloCampo}>Nome</Text>
+                    <Text style={styles.rotuloCampo}>
+                      Nome
+                    </Text>
+
                     <TextInput
                       style={styles.input}
                       value={form.nome}
-                      onChangeText={(v) =>
-                        setForm((f) => ({ ...f, nome: v }))
+                      onChangeText={(valor) =>
+                        setForm((anterior) => ({
+                          ...anterior,
+                          nome: valor,
+                        }))
                       }
                       placeholder="Seu nome completo"
                       placeholderTextColor={C.muted}
@@ -259,14 +353,18 @@ export default function PerfilMedicoScreen() {
                   </View>
 
                   <View style={styles.campo}>
-                    <Text style={styles.rotuloCampo}>Telefone</Text>
+                    <Text style={styles.rotuloCampo}>
+                      Telefone
+                    </Text>
+
                     <TextInput
                       style={styles.input}
                       value={form.telefone}
-                      onChangeText={(v) =>
-                        setForm((f) => ({
-                          ...f,
-                          telefone: mascaraTelefone(v),
+                      onChangeText={(valor) =>
+                        setForm((anterior) => ({
+                          ...anterior,
+                          telefone:
+                            mascaraTelefone(valor),
                         }))
                       }
                       placeholder="(00) 00000-0000"
@@ -280,65 +378,82 @@ export default function PerfilMedicoScreen() {
                     <Text style={styles.rotuloCampo}>
                       Especialidade
                     </Text>
-                    <View style={styles.opcoes}>
-                      {ESPECIALIDADES.map((opcao) => {
-                        const selecionada =
-                          form.especialidade === opcao;
 
-                        return (
-                          <Pressable
-                            key={opcao}
-                            style={[
-                              styles.chip,
-                              selecionada && styles.chipAtivo,
-                            ]}
-                            onPress={() =>
-                              setForm((f) => ({
-                                ...f,
-                                especialidade: opcao,
-                              }))
-                            }
-                          >
-                            <Text
+                    <View style={styles.opcoes}>
+                      {ESPECIALIDADES.map(
+                        (opcao) => {
+                          const selecionada =
+                            form.especialidade ===
+                            opcao;
+
+                          return (
+                            <Pressable
+                              key={opcao}
                               style={[
-                                styles.chipTexto,
+                                styles.chip,
                                 selecionada &&
-                                  styles.chipTextoAtivo,
+                                  styles.chipAtivo,
                               ]}
+                              onPress={() =>
+                                setForm(
+                                  (anterior) => ({
+                                    ...anterior,
+                                    especialidade:
+                                      opcao,
+                                  })
+                                )
+                              }
                             >
-                              {opcao}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
+                              <Text
+                                style={[
+                                  styles.chipTexto,
+                                  selecionada &&
+                                    styles.chipTextoAtivo,
+                                ]}
+                              >
+                                {opcao}
+                              </Text>
+                            </Pressable>
+                          );
+                        }
+                      )}
                     </View>
 
-                    {form.especialidade !== 'Médico' && (
+                    {form.especialidade !==
+                      'Médico' && (
                       <View style={styles.aviso}>
                         <Ionicons
                           name="warning-outline"
                           size={16}
                           color={C.warning}
                         />
-                        <Text style={styles.avisoTexto}>
-                          Ao salvar outra especialidade, você perde
-                          o acesso aos recursos exclusivos de
-                          médicos verificados (vínculos e alertas
-                          de pacientes).
+
+                        <Text
+                          style={styles.avisoTexto}
+                        >
+                          Ao salvar outra
+                          especialidade, você perde
+                          o acesso aos recursos
+                          exclusivos de médicos
+                          verificados, como vínculos
+                          e alertas de pacientes.
                         </Text>
                       </View>
                     )}
                   </View>
 
                   <View style={styles.campo}>
-                    <Text style={styles.rotuloCampo}>CRM</Text>
+                    <Text style={styles.rotuloCampo}>
+                      CRM
+                    </Text>
+
                     <TextInput
                       style={styles.input}
                       value={form.crm}
-                      onChangeText={(v) =>
-                        setForm((f) => ({
-                          ...f,
-                          crm: v.toUpperCase(),
+                      onChangeText={(valor) =>
+                        setForm((anterior) => ({
+                          ...anterior,
+                          crm: valor.toUpperCase(),
                         }))
                       }
                       placeholder="Ex.: 123456-SP"
@@ -351,13 +466,16 @@ export default function PerfilMedicoScreen() {
                   <Pressable
                     style={[
                       styles.botaoPrimario,
-                      salvando && styles.botaoDesabilitado,
+                      salvando &&
+                        styles.botaoDesabilitado,
                     ]}
                     onPress={salvar}
                     disabled={salvando}
                   >
                     {salvando ? (
-                      <ActivityIndicator color="#FFFFFF" />
+                      <ActivityIndicator
+                        color="#FFFFFF"
+                      />
                     ) : (
                       <>
                         <Ionicons
@@ -365,7 +483,11 @@ export default function PerfilMedicoScreen() {
                           size={20}
                           color="#FFFFFF"
                         />
-                        <Text style={styles.botaoPrimarioTexto}>
+                        <Text
+                          style={
+                            styles.botaoPrimarioTexto
+                          }
+                        >
                           Salvar alterações
                         </Text>
                       </>
@@ -375,12 +497,17 @@ export default function PerfilMedicoScreen() {
                   <Pressable
                     style={[
                       styles.botaoSecundario,
-                      salvando && styles.botaoDesabilitado,
+                      salvando &&
+                        styles.botaoDesabilitado,
                     ]}
                     onPress={cancelarEdicao}
                     disabled={salvando}
                   >
-                    <Text style={styles.botaoSecundarioTexto}>
+                    <Text
+                      style={
+                        styles.botaoSecundarioTexto
+                      }
+                    >
                       Cancelar
                     </Text>
                   </Pressable>
@@ -388,25 +515,38 @@ export default function PerfilMedicoScreen() {
               ) : (
                 <>
                   <View style={styles.linha}>
-                    <Text style={styles.rotulo}>Telefone</Text>
+                    <Text style={styles.rotulo}>
+                      Telefone
+                    </Text>
                     <Text style={styles.valor}>
-                      {perfil?.telefone || 'Não informado'}
+                      {perfil?.telefone ||
+                        'Não informado'}
                     </Text>
                   </View>
+
                   <View style={styles.linha}>
-                    <Text style={styles.rotulo}>Especialidade</Text>
+                    <Text style={styles.rotulo}>
+                      Especialidade
+                    </Text>
                     <Text style={styles.valor}>
                       {perfil?.especialidade}
                     </Text>
                   </View>
+
                   <View style={styles.linha}>
-                    <Text style={styles.rotulo}>CRM</Text>
+                    <Text style={styles.rotulo}>
+                      CRM
+                    </Text>
                     <Text style={styles.valor}>
-                      {perfil?.crm || 'Não informado'}
+                      {perfil?.crm ||
+                        'Não informado'}
                     </Text>
                   </View>
+
                   <View style={styles.linha}>
-                    <Text style={styles.rotulo}>Conta</Text>
+                    <Text style={styles.rotulo}>
+                      Conta
+                    </Text>
                     <Text style={styles.valor}>
                       {perfil?.verificado
                         ? 'Verificada'
@@ -428,13 +568,20 @@ export default function PerfilMedicoScreen() {
                     size={20}
                     color="#FFFFFF"
                   />
-                  <Text style={styles.botaoPrimarioTexto}>
+                  <Text
+                    style={
+                      styles.botaoPrimarioTexto
+                    }
+                  >
                     Editar perfil
                   </Text>
                 </Pressable>
 
                 <Pressable
-                  style={[styles.sair, saindo && { opacity: 0.5 }]}
+                  style={[
+                    styles.sair,
+                    saindo && styles.botaoDesabilitado,
+                  ]}
                   onPress={sair}
                   disabled={saindo}
                 >
@@ -443,15 +590,20 @@ export default function PerfilMedicoScreen() {
                     size={20}
                     color={C.danger}
                   />
-                  <Text style={styles.sairTexto}>Sair da conta</Text>
+                  <Text style={styles.sairTexto}>
+                    Sair da conta
+                  </Text>
                 </Pressable>
 
                 <Pressable
                   style={[
                     styles.excluir,
-                    excluindo && styles.botaoDesabilitado,
+                    excluindo &&
+                      styles.botaoDesabilitado,
                   ]}
-                  onPress={() => setConfirmarExclusao(true)}
+                  onPress={() =>
+                    setConfirmarExclusao(true)
+                  }
                   disabled={excluindo}
                 >
                   <Ionicons
@@ -478,7 +630,9 @@ export default function PerfilMedicoScreen() {
         textoConfirmar="Excluir conta"
         carregando={excluindo}
         onFechar={() => {
-          if (!excluindo) setConfirmarExclusao(false);
+          if (!excluindo) {
+            setConfirmarExclusao(false);
+          }
         }}
         onConfirmar={excluirConta}
       />
@@ -495,21 +649,36 @@ export default function PerfilMedicoScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.background },
-  content: { padding: 20, paddingBottom: 40 },
+  container: {
+    flex: 1,
+    backgroundColor: C.background,
+  },
+
+  content: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+
   voltar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 24,
   },
-  voltarTexto: { color: C.primary, fontSize: 16, fontWeight: '600' },
+
+  voltarTexto: {
+    color: C.primary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
   titulo: {
     fontSize: 28,
     fontWeight: '700',
     color: C.text,
     marginBottom: 20,
   },
+
   card: {
     backgroundColor: C.card,
     borderRadius: 18,
@@ -519,6 +688,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
+
   avatar: {
     width: 72,
     height: 72,
@@ -528,13 +698,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
-  nome: { fontSize: 20, fontWeight: '700', color: C.text },
+
+  nome: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: C.text,
+  },
+
   email: {
     fontSize: 14,
     color: C.muted,
     marginTop: 4,
     marginBottom: 18,
   },
+
   linha: {
     alignSelf: 'stretch',
     flexDirection: 'row',
@@ -542,22 +719,40 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: C.border,
+    gap: 12,
   },
-  rotulo: { color: C.muted, fontSize: 14 },
-  valor: { color: C.text, fontSize: 14, fontWeight: '600' },
+
+  rotulo: {
+    color: C.muted,
+    fontSize: 14,
+  },
+
+  valor: {
+    color: C.text,
+    fontSize: 14,
+    fontWeight: '600',
+    flexShrink: 1,
+    textAlign: 'right',
+  },
+
   formulario: {
     alignSelf: 'stretch',
     borderTopWidth: 1,
     borderTopColor: C.border,
     paddingTop: 16,
   },
-  campo: { marginBottom: 14 },
+
+  campo: {
+    marginBottom: 14,
+  },
+
   rotuloCampo: {
     color: C.muted,
     fontSize: 13,
     fontWeight: '600',
     marginBottom: 6,
   },
+
   input: {
     backgroundColor: C.background,
     borderWidth: 1,
@@ -567,11 +762,13 @@ const styles = StyleSheet.create({
     color: C.text,
     fontSize: 15,
   },
+
   opcoes: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
+
   chip: {
     paddingVertical: 8,
     paddingHorizontal: 14,
@@ -580,12 +777,22 @@ const styles = StyleSheet.create({
     borderColor: C.border,
     backgroundColor: C.card,
   },
+
   chipAtivo: {
     backgroundColor: C.primary,
     borderColor: C.primary,
   },
-  chipTexto: { color: C.text, fontSize: 13, fontWeight: '600' },
-  chipTextoAtivo: { color: '#FFFFFF' },
+
+  chipTexto: {
+    color: C.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  chipTextoAtivo: {
+    color: '#FFFFFF',
+  },
+
   aviso: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -595,12 +802,14 @@ const styles = StyleSheet.create({
     padding: 10,
     marginTop: 10,
   },
+
   avisoTexto: {
     flex: 1,
     color: C.warning,
     fontSize: 12,
     lineHeight: 17,
   },
+
   botaoPrimario: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -611,11 +820,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
   },
+
   botaoPrimarioTexto: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
   },
+
   botaoSecundario: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -626,12 +837,17 @@ const styles = StyleSheet.create({
     borderColor: C.border,
     backgroundColor: C.card,
   },
+
   botaoSecundarioTexto: {
     color: C.text,
     fontSize: 16,
     fontWeight: '600',
   },
-  botaoDesabilitado: { opacity: 0.6 },
+
+  botaoDesabilitado: {
+    opacity: 0.6,
+  },
+
   sair: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -641,8 +857,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: C.danger,
+    marginBottom: 12,
   },
-  sairTexto: { color: C.danger, fontSize: 16, fontWeight: '700' },
+
+  sairTexto: {
+    color: C.danger,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
   excluir: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -651,7 +874,13 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 12,
     backgroundColor: C.dangerSoft,
-    marginTop: 12,
+    borderWidth: 1,
+    borderColor: C.danger,
   },
-  excluirTexto: { color: C.danger, fontSize: 16, fontWeight: '700' },
+
+  excluirTexto: {
+    color: C.danger,
+    fontSize: 16,
+    fontWeight: '700',
+  },
 });
