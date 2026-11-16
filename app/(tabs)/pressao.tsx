@@ -792,7 +792,7 @@ export default function PressaoScreen() {
                   key={item.id}
                   onPress={() =>
                     router.push({
-                      pathname: '/editar-pressao',
+                      pathname: '/detalhes-pressao',
                       params: {
                         id: item.id,
                       },
