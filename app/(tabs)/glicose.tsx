@@ -656,12 +656,12 @@ export default function GlicoseScreen() {
                           if (!registro.id) return;
 
                           router.push({
-                            pathname: '/editar-glicose' as any,
+                            pathname: '/detalhes-glicose' as any,
                             params: { id: registro.id },
                           });
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel={`Editar medição de ${registro.valor} mg por decilitro, em ${registro.data} às ${registro.horario}`}
+                        accessibilityLabel={`Ver detalhes da medição de ${registro.valor} mg por decilitro, em ${registro.data} às ${registro.horario}`}
                       >
                         <View style={styles.registroTopo}>
                           <View>
