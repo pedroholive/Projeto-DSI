@@ -189,10 +189,22 @@ service cloud.firestore {
 
       // ===================================================
       // PRESSÃO ARTERIAL
+      // ALTERAÇÃO: LEITURA POR MÉDICO COM VÍNCULO ATIVO
       // ===================================================
 
       match /registrosPressao/{registroId} {
-        allow read: if dono(userId);
+
+        // O paciente acessa suas próprias medições.
+        // Médicos verificados podem somente lê-las
+        // durante vínculo ativo.
+
+        allow get, list: if dono(userId)
+          || (
+            medicoVerificado(request.auth.uid)
+            && vinculoAtivo(request.auth.uid, userId)
+          );
+
+        // Somente o paciente pode modificar os registros.
 
         allow create: if dono(userId);
 
