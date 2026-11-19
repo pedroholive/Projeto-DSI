@@ -401,6 +401,27 @@ export default function ConsultasMedicoScreen() {
           </Text>
         </Pressable>
 
+        <Pressable
+          style={styles.botaoSecundario}
+          onPress={() =>
+            router.push({
+              pathname: '/mapa-consultas',
+              params: { perfil: 'medico' },
+            } as Href)
+          }
+          accessibilityRole="button"
+        >
+          <Ionicons
+            name="map-outline"
+            size={20}
+            color={C.primary}
+          />
+
+          <Text style={styles.botaoSecundarioTexto}>
+            Ver consultas no mapa
+          </Text>
+        </Pressable>
+
         <Text style={styles.ajuda}>
           Você escolhe o paciente vinculado
           na próxima tela. Toque em uma consulta
@@ -615,6 +636,22 @@ const styles = StyleSheet.create({
   botaoTexto: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '700',
+  },
+  botaoSecundario: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: C.primary,
+    padding: 14,
+    borderRadius: 12,
+    marginTop: 10,
+  },
+  botaoSecundarioTexto: {
+    color: C.primary,
+    fontSize: 15,
     fontWeight: '700',
   },
   ajuda: {

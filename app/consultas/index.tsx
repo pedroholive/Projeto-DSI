@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable, {
   type SwipeableMethods,
@@ -719,6 +719,23 @@ export default function ConsultasScreen() {
             </View>
 
             <Pressable
+              style={styles.botaoMapa}
+              onPress={() =>
+                router.push({
+                  pathname: '/mapa-consultas',
+                  params: { perfil: 'paciente' },
+                } as Href)
+              }
+              accessibilityLabel="Ver consultas no mapa"
+            >
+              <Ionicons
+                name="map-outline"
+                size={22}
+                color={C.primaryDark}
+              />
+            </Pressable>
+
+            <Pressable
               style={styles.botaoAdicionar}
               onPress={() => router.push('/consultas/nova')}
               accessibilityLabel="Nova consulta"
@@ -1290,6 +1307,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: C.muted,
     marginTop: 3,
+  },
+
+  botaoMapa: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: C.primarySoft,
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
 
   botaoAdicionar: {
