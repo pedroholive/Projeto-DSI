@@ -506,6 +506,44 @@ export default function DoctorHomeScreen() {
           />
         </Pressable>
 
+        {/* Acompanhamento de pressão — mesmo visual da glicemia */}
+        <Pressable
+          onPress={() =>
+            router.push('/pressao-profissional' as Href)
+          }
+          style={({ pressed }) => [
+            styles.glicemiaCard,
+            pressed && styles.cardPressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Consultar pressão arterial dos pacientes"
+        >
+          <View style={styles.glicemiaIcon}>
+            <Ionicons
+              name="heart-outline"
+              size={27}
+              color={C.primary}
+            />
+          </View>
+
+          <View style={styles.glicemiaInfo}>
+            <Text style={styles.glicemiaTitle}>
+              Pressão dos pacientes
+            </Text>
+
+            <Text style={styles.glicemiaDescription}>
+              Consulte gráficos, histórico e medições
+              de pressão dos pacientes vinculados.
+            </Text>
+          </View>
+
+          <Ionicons
+            name="chevron-forward"
+            size={23}
+            color={C.primary}
+          />
+        </Pressable>
+
         <Pressable
           onPress={() =>
             router.push('/meus-pacientes' as Href)
