@@ -1,25 +1,25 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { auth } from '@/firebaseConfig';
+import CampoEndereco from '@/components/consultas/Campoendereco';
 import ModalConsultaFeedback, {
-  type ResumoConsulta,
-} from '@/components/Modalconsultafeedback';
-import CampoEndereco from '@/components/Campoendereco';
+    type ResumoConsulta,
+} from '@/components/consultas/Modalconsultafeedback';
+import { auth } from '@/firebaseConfig';
 import { criarConsulta } from '@/services/consultaService';
 
 const C = {

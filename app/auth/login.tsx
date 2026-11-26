@@ -35,7 +35,7 @@ import {
 import {
   auth,
   db,
-} from '../firebaseConfig';
+} from '../../firebaseConfig';
 
 // =====================================================
 // CORREÇÃO VISUAL DO CAMPO DE SENHA NA WEB

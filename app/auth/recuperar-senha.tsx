@@ -3,7 +3,7 @@ import { View, Text, TextInput, Pressable, StyleSheet, Alert } from 'react-nativ
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { useRouter, Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { auth } from '../firebaseConfig';
+import { auth } from '../../firebaseConfig';
 import { Stack } from 'expo-router';
 
 export default function RecuperarSenhaScreen() {

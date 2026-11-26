@@ -17,8 +17,8 @@ import {
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import BotaoAbrirRota from '@/components/botaoabrirrota';
-import MapaConsulta from '@/components/mapaconsulta';
+import BotaoAbrirRota from '@/components/mapas/botaoabrirrota';
+import MapaConsulta from '@/components/mapas/mapaconsulta';
 import {
   acompanharConsultasMedico,
   cancelarConsultaMedico,

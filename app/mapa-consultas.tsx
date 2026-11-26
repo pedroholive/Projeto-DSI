@@ -1,41 +1,41 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import {
-  useLocalSearchParams,
-  useRouter,
+    useLocalSearchParams,
+    useRouter,
 } from 'expo-router';
 
 import { onAuthStateChanged } from 'firebase/auth';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
-  ActivityIndicator,
-  Linking,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    Linking,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import FiltrosMapaConsultas, {
-  FILTROS_INICIAIS,
-  filtrarConsultasMapa,
-  type FiltrosMapa,
-} from '@/components/FiltrosMapaConsultas';
+    FILTROS_INICIAIS,
+    filtrarConsultasMapa,
+    type FiltrosMapa,
+} from '@/components/mapas/FiltrosMapaConsultas';
 
-import MapaConsultas from '@/components/mapaconsultas';
-import type { MarcadorMapa } from '@/components/mapaconsultas.types';
+import MapaConsultas from '@/components/mapas/mapaconsultas';
+import type { MarcadorMapa } from '@/components/mapas/mapaconsultas.types';
 
 import { auth } from '@/firebaseConfig';
 
 import {
-  acompanharConsultasMedico,
-  listarConsultas,
-  type Consulta,
-  type ConsultaMedico,
+    acompanharConsultasMedico,
+    listarConsultas,
+    type Consulta,
+    type ConsultaMedico,
 } from '@/services/consultaService';
 
 const C = {

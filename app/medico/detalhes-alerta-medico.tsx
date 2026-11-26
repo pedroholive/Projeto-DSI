@@ -22,7 +22,7 @@ import {
   listarAlertasMedico,
   type AlertaMedico,
   type GravidadeAlerta,
-} from '../services/alertasService';
+} from '../../services/alertasService';
 
 const C = {
   background: '#F4F8F7',

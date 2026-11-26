@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 
 import { db, auth } from '@/firebaseConfig';
-import { geocodificarEndereco } from '@/services/geocodificacaoservice';
+import { geocodificarEndereco } from '@/services/localizacao/geocodificacaoservice';
 
 export type StatusConsulta =
   | 'registro_pessoal'

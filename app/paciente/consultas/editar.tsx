@@ -1,3 +1,18 @@
+import CampoEndereco from '@/components/consultas/Campoendereco';
+import ModalConsultaFeedback, {
+  type ResumoConsulta,
+  type TipoFeedbackConsulta,
+} from '@/components/consultas/Modalconsultafeedback';
+import BotaoAbrirRota from '@/components/mapas/botaoabrirrota';
+import MapaConsulta from '@/components/mapas/mapaconsulta';
+import { auth } from '@/firebaseConfig';
+import {
+  atualizarConsulta,
+  buscarConsultaPorId,
+  excluirConsulta,
+} from '@/services/consultaService';
+import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -12,21 +27,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { auth } from '@/firebaseConfig';
-import BotaoAbrirRota from '@/components/botaoabrirrota';
-import CampoEndereco from '@/components/Campoendereco';
-import MapaConsulta from '@/components/mapaconsulta';
-import ModalConsultaFeedback, {
-  type ResumoConsulta,
-  type TipoFeedbackConsulta,
-} from '@/components/Modalconsultafeedback';
-import {
-  buscarConsultaPorId,
-  atualizarConsulta,
-  excluirConsulta,
-} from '@/services/consultaService';
 
 type TipoMensagem = 'sucesso' | 'erro';
 type AcaoMensagem = 'voltar' | 'fechar';

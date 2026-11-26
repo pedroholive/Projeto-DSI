@@ -16,7 +16,7 @@ import { useRouter } from 'expo-router';
 
 import {
   solicitarVinculoPorCodigo,
-} from '../services/vinculosService';
+} from '../../services/vinculosService';
 
 export default function VincularPacienteScreen() {
   const router = useRouter();

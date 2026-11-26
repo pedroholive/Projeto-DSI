@@ -1,111 +1,46 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
-import React from "react";
 
-import { HapticTab } from "@/components/haptic-tab";
+import { Stack } from 'expo-router';
 
-export default function TabLayout() {
+export default function RootLayout() {
   return (
-    <Tabs
+    <Stack
+      initialRouteName="login"
       screenOptions={{
         headerShown: false,
-
-        tabBarActiveTintColor: "#0E9F8C",
-        tabBarInactiveTintColor: "#737B8C",
-
-        tabBarButton: HapticTab,
-
-        tabBarStyle: {
-          backgroundColor: "#FFFFFF",
-          borderTopWidth: 1,
-          borderTopColor: "#E5E7EB",
-          height: 78,
-          paddingTop: 8,
-          paddingBottom: 10,
-          elevation: 0,
-        },
-
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: "500",
-        },
       }}
     >
-      {/* Início */}
-      <Tabs.Screen
-        name="index"
+      {/* NAVEGAÇÃO PRINCIPAL */}
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="login" />
+
+      <Stack.Screen
+        name="cadastro"
         options={{
-          title: "Início",
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "home" : "home-outline"}
-              size={25}
-              color={color}
-            />
-          ),
+          headerShown: true,
+          title: 'Criar Conta',
         }}
       />
 
-      {/* Glicose */}
-      <Tabs.Screen
-        name="glicose"
-        options={{
-          title: "Glicose",
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "water" : "water-outline"}
-              size={25}
-              color={color}
-            />
-          ),
-        }}
-      />
+      <Stack.Screen name="recuperar-senha" />
 
-      {/* Pressão */}
-      <Tabs.Screen
-        name="pressao"
-        options={{
-          title: "Pressão",
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "heart" : "heart-outline"}
-              size={25}
-              color={color}
-            />
-          ),
-        }}
-      />
+      {/* TELAS DO MÉDICO */}
+      <Stack.Screen name="medico-home" />
+      <Stack.Screen name="alertas-medico" />
+      <Stack.Screen name="consultas-medico" />
+      <Stack.Screen name="perfil-medico" />
+      <Stack.Screen name="meus-pacientes" />
+      <Stack.Screen name="glicemia-profissional" />
+      <Stack.Screen name="pressao-profissional" />
+      <Stack.Screen name="agendar-consulta-medica" />
 
-      {/* Remédios */}
-      <Tabs.Screen
-        name="remedios"
-        options={{
-          title: "Medicamentos",
-          tabBarLabel: "Remédios",
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="medkit-outline" size={25} color={color} />
-          ),
-        }}
-      />
-
-      {/* Mais */}
-      <Tabs.Screen
-        name="mais"
-        options={{
-          title: "Mais",
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="menu-outline" size={27} color={color} />
-          ),
-        }}
-      />
-
-      {/* Mantém a antiga tela Explore fora da barra */}
-      <Tabs.Screen
-        name="explore"
-        options={{
-          href: null,
-        }}
-      />
-    </Tabs>
+      {/* DEMAIS TELAS */}
+      <Stack.Screen name="novo-registro" />
+      <Stack.Screen name="editar-pressao" />
+      <Stack.Screen name="consultas/index" />
+      <Stack.Screen name="consultas/nova" />
+      <Stack.Screen name="consultas/editar" />
+      <Stack.Screen name="consultas/detalhe" />
+      <Stack.Screen name="meus-medicos" />
+    </Stack>
   );
 }
