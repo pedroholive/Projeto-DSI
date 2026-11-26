@@ -624,6 +624,52 @@ service cloud.firestore {
             ]
             && request.resource.data.updatedAt == request.time
           )
+          ||
+          (
+            // AJUSTE MANUAL DA LOCALIZAÇÃO
+            // Somente o médico responsável e verificado.
+            resource.data.get('origem', '') == 'medico'
+            && resource.data.get('medicoId', '') ==
+              request.auth.uid
+            && medicoVerificado(request.auth.uid)
+
+            // Não permite alterar localização de consultas
+            // canceladas ou recusadas.
+            && resource.data.status in [
+              'aguardando_confirmacao',
+              'confirmada'
+            ]
+
+            // Somente coordenadas e data de atualização.
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                'latitude',
+                'longitude',
+                'updatedAt'
+              ])
+
+            // Exige mudança em pelo menos uma coordenada.
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasAny([
+                'latitude',
+                'longitude'
+              ])
+
+            // Validação dos valores geográficos.
+            && request.resource.data.latitude is number
+            && request.resource.data.longitude is number
+            && request.resource.data.latitude >= -90
+            && request.resource.data.latitude <= 90
+            && request.resource.data.longitude >= -180
+            && request.resource.data.longitude <= 180
+            && !(
+              request.resource.data.latitude == 0
+              && request.resource.data.longitude == 0
+            )
+
+            // Exige timestamp do servidor.
+            && request.resource.data.updatedAt == request.time
+          )
         );
 
       allow delete: if autenticado()
@@ -709,8 +755,6 @@ service cloud.firestore {
           && dados.dataInicial is string
           && dados.dataFinal is string
           && dados.instrucoes is string
-          && dados.instrucoes.size() <= 500
-          && dados.lembrete is bool
           && dados.lembreteMinutos is number;
       }
 

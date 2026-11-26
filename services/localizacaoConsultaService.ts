@@ -2,12 +2,25 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
+import {
+  doc,
+  runTransaction,
+  serverTimestamp,
+} from 'firebase/firestore';
+
+import { auth, db } from '@/firebaseConfig';
+
 export interface LocalizacaoConsulta {
   id: string;
   nome: string;
   latitude: number;
   longitude: number;
 }
+
+export type CoordenadasConsulta = {
+  latitude: number;
+  longitude: number;
+};
 
 interface ResultadoNominatim {
   place_id: number;
@@ -28,6 +41,10 @@ const INTERVALO_BUSCA_MS = 1200;
 let ultimaBuscaEm = 0;
 let filaBuscas: Promise<unknown> = Promise.resolve();
 
+// =====================================================
+// VALIDAÇÃO E NORMALIZAÇÃO
+// =====================================================
+
 function normalizarBusca(texto: string): string {
   return texto
     .trim()
@@ -45,7 +62,8 @@ function coordenadasValidas(
     latitude >= -90 &&
     latitude <= 90 &&
     longitude >= -180 &&
-    longitude <= 180
+    longitude <= 180 &&
+    !(latitude === 0 && longitude === 0)
   );
 }
 
@@ -54,6 +72,10 @@ function aguardar(milisegundos: number): Promise<void> {
     setTimeout(resolve, milisegundos);
   });
 }
+
+// =====================================================
+// CACHE DE LOCALIZAÇÕES
+// =====================================================
 
 async function consultarCache(
   chave: string
@@ -121,9 +143,14 @@ async function salvarCache(
       JSON.stringify(dados)
     );
   } catch {
+    // Falha no cache não deve impedir a busca.
     return;
   }
 }
+
+// =====================================================
+// BUSCA DE ENDEREÇOS - NOMINATIM
+// =====================================================
 
 async function executarConsulta(
   endereco: string
@@ -244,4 +271,120 @@ export async function buscarLocalizacoesConsulta(
   );
 
   return operacao;
+}
+
+// =====================================================
+// AJUSTE MANUAL DA LOCALIZAÇÃO DE CONSULTA MÉDICA
+// =====================================================
+
+export async function atualizarLocalizacaoConsultaMedico(
+  consultaId: string,
+  coordenadas: CoordenadasConsulta
+): Promise<void> {
+  const medicoId = auth.currentUser?.uid;
+
+  if (!medicoId) {
+    throw new Error(
+      'Faça login para ajustar a localização.'
+    );
+  }
+
+  if (!consultaId.trim()) {
+    throw new Error(
+      'Consulta não identificada.'
+    );
+  }
+
+  if (
+    !coordenadasValidas(
+      coordenadas.latitude,
+      coordenadas.longitude
+    )
+  ) {
+    throw new Error(
+      'Selecione uma localização válida no mapa.'
+    );
+  }
+
+  const consultaRef = doc(
+    db,
+    'consultas',
+    consultaId
+  );
+
+  const medicoRef = doc(
+    db,
+    'usuarios',
+    medicoId
+  );
+
+  await runTransaction(db, async (transacao) => {
+    // Todas as leituras ocorrem antes da atualização.
+    const consultaSnapshot =
+      await transacao.get(consultaRef);
+
+    const medicoSnapshot =
+      await transacao.get(medicoRef);
+
+    if (!consultaSnapshot.exists()) {
+      throw new Error(
+        'Consulta não encontrada.'
+      );
+    }
+
+    if (!medicoSnapshot.exists()) {
+      throw new Error(
+        'Perfil profissional não encontrado.'
+      );
+    }
+
+    const medico = medicoSnapshot.data();
+
+    if (
+      medico.perfil !== 'professional' ||
+      medico.especialidade !== 'Médico' ||
+      medico.verificado !== true
+    ) {
+      throw new Error(
+        'Esta operação exige uma conta médica verificada.'
+      );
+    }
+
+    const consulta = consultaSnapshot.data();
+
+    // Apenas quem criou a consulta como médico pode
+    // modificar a localização.
+    if (
+      consulta.origem !== 'medico' ||
+      consulta.medicoId !== medicoId
+    ) {
+      throw new Error(
+        'Somente o médico responsável pode ajustar esta localização.'
+      );
+    }
+
+    if (
+      consulta.status === 'cancelada' ||
+      consulta.status === 'recusada'
+    ) {
+      throw new Error(
+        'Não é possível alterar uma consulta cancelada ou recusada.'
+      );
+    }
+
+    const mesmaLocalizacao =
+      consulta.latitude === coordenadas.latitude &&
+      consulta.longitude === coordenadas.longitude;
+
+    if (mesmaLocalizacao) {
+      return;
+    }
+
+    // Preserva o endereço textual e todos os outros dados.
+    transacao.update(consultaRef, {
+      latitude: coordenadas.latitude,
+      longitude: coordenadas.longitude,
+      updatedAt: serverTimestamp(),
+    });
+  });
 }
