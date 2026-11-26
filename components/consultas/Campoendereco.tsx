@@ -15,7 +15,7 @@ import {
 import {
   buscarSugestoesEndereco,
   type SugestaoEndereco,
-} from '@/services/Enderecoservice';
+} from '@/services/localizacao/Enderecoservice';
 
 interface Props {
   value: string;

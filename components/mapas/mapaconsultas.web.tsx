@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import type {
-  MarcadorMapa,
+    MarcadorMapa,
 } from './mapaconsultas.types';
 
 interface Props {

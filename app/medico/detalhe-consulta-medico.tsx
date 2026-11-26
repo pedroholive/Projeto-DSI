@@ -22,9 +22,8 @@ import AjusteLocalizacaoConsulta, {
   type CoordenadasConsulta,
 } from '@/components/AjusteLocalizacaoConsulta';
 
-import BotaoAbrirRota from '@/components/botaoabrirrota';
-import MapaConsulta from '@/components/mapaconsulta';
-
+import BotaoAbrirRota from '@/components/mapas/botaoabrirrota';
+import MapaConsulta from '@/components/mapas/mapaconsulta';
 import {
   acompanharConsultasMedico,
   cancelarConsultaMedico,
@@ -35,7 +34,7 @@ import {
 
 import {
   atualizarLocalizacaoConsultaMedico,
-} from '@/services/localizacaoConsultaService';
+} from '@/services/localizacao/localizacaoConsultaService';
 
 const C = {
   background: '#F4F8F7',

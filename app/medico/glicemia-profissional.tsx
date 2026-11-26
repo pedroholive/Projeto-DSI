@@ -18,12 +18,12 @@ import Svg, { Circle, Line, Polyline } from 'react-native-svg';
 import {
   listarPacientesVinculados,
   type PacienteVinculado,
-} from '../services/pacientesVinculadosService';
+} from '../../services/pacientesVinculadosService';
 
 import {
   listarGlicemias,
   type Glicemia,
-} from '../services/glicemiaService';
+} from '../../services/glicemiaService';
 
 const C = {
   background: '#F4F8F7',

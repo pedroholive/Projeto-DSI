@@ -27,7 +27,7 @@ import { listarPacientesVinculados } from '@/services/pacientesVinculadosService
 import {
   buscarLocalizacoesConsulta,
   type LocalizacaoConsulta,
-} from '@/services/localizacaoConsultaService';
+} from '@/services/localizacao/localizacaoConsultaService';
 
 const C = {
   background: '#F4F8F7',

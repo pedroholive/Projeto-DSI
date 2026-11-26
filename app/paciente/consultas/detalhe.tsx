@@ -3,18 +3,18 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import BotaoAbrirRota from '@/components/botaoabrirrota';
-import MapaConsulta from '@/components/mapaconsulta';
+import BotaoAbrirRota from '@/components/mapas/botaoabrirrota';
+import MapaConsulta from '@/components/mapas/mapaconsulta';
 import { auth } from '@/firebaseConfig';
 import { buscarConsultaPorId, type Consulta } from '@/services/consultaService';
 
